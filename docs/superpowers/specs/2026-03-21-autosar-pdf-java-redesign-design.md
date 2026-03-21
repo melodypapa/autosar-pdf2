@@ -598,12 +598,18 @@ Maven - standard, widely used, XML configuration
 - Use existing AUTOSAR PDF examples from reference project
 - Include edge case PDFs with complex table structures
 
-### Python Integration Test Compatibility
+### Java Integration Tests
 
-**Critical Requirement:** The Java implementation must pass all integration tests from the Python reference implementation.
+**Critical Requirement:** The Java implementation must pass all integration tests that mirror the Python reference test cases.
+
+**Test Implementation:**
+- Integration tests implemented in Java using JUnit 5
+- Test structure mirrors Python integration tests (`tests/reference/integration/test_pdf_integration.py`)
+- Assertions match Python test expectations exactly
+- Same test PDF files used as input (`examples/pdf/`)
 
 **Test Coverage:**
-The Python integration tests (`tests/integration/test_pdf_integration.py`) cover 11 major test cases with complex edge cases:
+The Java integration tests must cover 11 major test cases with complex edge cases (SWIT_00001-SWIT_00012):
 
 | Test Case ID | Description | Key Edge Cases |
 |--------------|-------------|----------------|
@@ -645,19 +651,39 @@ The Python integration tests (`tests/integration/test_pdf_integration.py`) cover
    - AUTOSAR standard and release information
    - Track for all types (classes, enumerations, primitives)
 
-**Test Execution Strategy:**
-- Java tests mirror Python test structure and assertions
-- Test fixtures: session-scoped for performance (same PDF parsed once per test session)
-- Expected counts: minimum thresholds to allow for future PDF version changes
-- Same PDF files used as reference: `../autosar-pdf/examples/pdf/`
+**Test Implementation Details:**
+- **Framework:** JUnit 5 for Java integration tests
+- **Location:** `src/test/java/.../integration/` (Java code)
+- **Reference:** `tests/reference/integration/test_pdf_integration.py` (Python reference for expected behavior)
+- **Test fixtures:** JUnit `@MethodSource` or custom fixture management for performance (same PDF parsed once per test session)
+- **Expected counts:** minimum thresholds to allow for future PDF version changes
+- **Same PDF files used as input:** `examples/pdf/`
+
+**Example Java Test Structure:**
+```java
+@Test
+@DisplayName("SWIT_00001: Parse AUTOSAR, SwComponentType, ARElement classes")
+void testParseRealAutosarPdfAndVerifyAutosarAndSwComponentType() {
+    AutosarDoc doc = PdfParser.parse("examples/pdf/AUTOSAR_FO_TPS_GenericStructureTemplate.pdf");
+    // Assertions matching Python test expectations
+    assertThat(doc.getPackage("AutosarTopLevelStructure").getClass("AUTOSAR")).isNotNull();
+    // ... more assertions
+}
+```
 
 ### Regression Testing
 
 **Comparison Method:**
-- Parse same PDFs with both Python and Java implementations
+- Run Python reference implementation to generate expected outputs
+- Run Java implementation to generate actual outputs
 - Compare output structures (JSON format for easier comparison)
 - Use JSON diff library to identify structural differences
 - Semantic comparison: ignore whitespace differences, focus on content
+
+**Reference Data Generation:**
+- Python reference: `tests/reference/` (for generating expected outputs)
+- Java implementation: generates actual outputs for comparison
+- Test data file: `tests/reference/integration/timing_extensions_class_list.txt` (148 expected classes)
 
 **Which Outputs to Compare:**
 - Type-to-package mappings (structural equivalence)
@@ -669,20 +695,20 @@ The Python integration tests (`tests/integration/test_pdf_integration.py`) cover
 - 100% match for inheritance relationships
 - 95%+ match for attribute extraction (allow for cell refinement differences)
 
-**Python Integration Test Compatibility:**
-- All 11 Python integration tests (SWIT_00001-SWIT_00012) must pass in Java implementation
-- Test assertions must match Python test expectations exactly
-- Edge case handling (multi-line attributes, camelCase fragments, hyphenated breaks) must match Python behavior
-- Output format (JSON/Markdown) must be structurally equivalent to Python output
+**Java Integration Test Requirements:**
+- All 11 Java integration tests (SWIT_00001-SWIT_00012) must pass
+- Test assertions must match Python reference test expectations exactly
+- Edge case handling (multi-line attributes, camelCase fragments, hyphenated breaks) must match Python reference behavior
+- Output format (JSON/Markdown) must be structurally equivalent to Python reference output
 
 **Failure Handling:**
 - If attribute extraction falls below 95% match: test fails, differences logged with context (page number, cell location, expected vs actual)
-- If any Python integration test fails: implementation not complete
-- Full regression test suite must pass before considering implementation complete
+- If any Java integration test fails: implementation not complete
+- Full Java integration test suite must pass before considering implementation complete
 - Individual test failures are reviewed and categorized as: implementation bugs vs. acceptable extraction differences
 
 **Handling Format Differences:**
-- Python outputs are used as reference expected values
+- Python reference outputs serve as expected values
 - Java outputs are compared structurally, not textually
 - Differences are logged with context (page, cell location) for investigation
 
@@ -694,11 +720,10 @@ Next step: Invoke `writing-plans` skill to create detailed implementation tasks 
 
 ## References
 
-- Reference Python implementation: `docs/reference/` (copied from original for reference only)
-- AUTOSAR PDF examples: `examples/pdf/` (copied from original)
-- Requirements docs: `docs/reference/docs/requirements/` (copied from original)
-- Python integration tests: `tests/reference/integration/test_pdf_integration.py` (must all pass)
-- Test case files: `tests/reference/integration/timing_extensions_class_list.txt` (expected class list)
-- Test PDFs for edge cases: `examples/pdf/` (all PDF files copied from original)
-- Development documentation: `docs/reference/docs/development/`
-- Test cases documentation: `docs/reference/docs/test_cases/`
+- Reference Python implementation (for expected behavior only): `tests/reference/` (Python reference code)
+- AUTOSAR PDF examples: `examples/pdf/` (all PDF files for testing)
+- Requirements docs: `docs/reference/docs/requirements/` (copied from original for reference)
+- Python integration test reference: `tests/reference/integration/test_pdf_integration.py` (reference for expected behavior)
+- Expected class list: `tests/reference/integration/timing_extensions_class_list.txt` (148 expected classes)
+- Development documentation: `docs/reference/docs/development/` (coding rules, TDD, etc.)
+- Test cases documentation: `docs/reference/docs/test_cases/` (integration test specifications)
