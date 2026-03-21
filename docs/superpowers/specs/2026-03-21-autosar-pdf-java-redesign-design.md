@@ -124,6 +124,39 @@ TwoPhaseExtractor (implements PdfExtractor)
 - `ObjectExtractor.create(pdfDocument)` followed by `extract(ExtractionMethod.LATTICE)`
 - **No retries**: Single attempt per page, then fallback
 
+### Multi-Page Table Handling
+
+**Problem:** Tables spanning multiple pages are extracted as separate table objects by Tabula, resulting in fragmented output.
+
+**Detection Strategy:**
+- Compare column count and column X-positions of consecutive tables on adjacent pages
+- If column count matches AND column positions align (within tolerance threshold), tables are likely continuation of the same table
+- Check for repeated header row on subsequent pages (common pattern in PDFs)
+
+**Merging Algorithm:**
+1. Extract all tables with their page numbers
+2. Sort tables by page number and vertical position
+3. For each table on page N:
+   - Compare with tables on page N+1
+   - If columns align and headers don't repeat, merge: append rows to page N table
+   - If headers repeat on page N+1, treat as separate tables (headers indicate new table start)
+4. Apply merged table data during Markdown generation or parsing
+
+**MarkdownConverter Behavior (autosar-pdf2md CLI):**
+- Multi-page tables merged into single Markdown table
+- Page separator (`---`) inserted between merged table sections
+- Row count annotation added: `<!-- Table continues across pages X-Y -->`
+
+**TwoPhaseExtractor Behavior (autosar-extract CLI):**
+- Multi-page attribute tables merged before stateful parsing
+- Maintains current class context across page boundaries
+- Parent-child resolution uses complete merged table data
+
+**Fallback Behavior:**
+- If table merging fails (inconsistent columns, conflicting data), log warning
+- Output tables as separate entities per page
+- No data loss - just fragmented representation
+
 ### Multi-Line Cell Handling
 
 - Tabula-java returns cell text as single strings
