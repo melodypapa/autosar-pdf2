@@ -598,6 +598,59 @@ Maven - standard, widely used, XML configuration
 - Use existing AUTOSAR PDF examples from reference project
 - Include edge case PDFs with complex table structures
 
+### Python Integration Test Compatibility
+
+**Critical Requirement:** The Java implementation must pass all integration tests from the Python reference implementation.
+
+**Test Coverage:**
+The Python integration tests (`tests/integration/test_pdf_integration.py`) cover 11 major test cases with complex edge cases:
+
+| Test Case ID | Description | Key Edge Cases |
+|--------------|-------------|----------------|
+| SWIT_00001 | AUTOSAR, SwComponentType, ARElement verification | Multi-page class definitions, base class parsing, note extraction, source tracking |
+| SWIT_00002 | TimingExtensions class list verification | 148 expected classes, complete extraction validation |
+| SWIT_00003 | AtomicSwComponentType base classes | Base class extraction, ATP interface separation (bases vs implements) |
+| SWIT_00004 | DiagnosticDebounceBehaviorEnum | Enumeration literal extraction, multi-line descriptions, immutability |
+| SWIT_00005 | Enumeration literal tags extraction | Tag parsing (atp.EnumerationLiteralIndex, xml.name), description cleaning |
+| SWIT_00006 | Multi-page enumeration literal list | ByteOrderEnum across multiple pages, literal structure validation |
+| SWIT_00007 | Stacked literal names (enum3.png) | Three literal names in one cell combined into one literal |
+| SWIT_00008 | Pattern 5 enumeration behavior | Same base name with different suffixes as separate literals |
+| SWIT_00009 | Total counts and sorted lists | 4 PDFs, class/enumeration/primitive counts, alphabetical sorting |
+| SWIT_00010 | Hyphenated attribute continuation | J1939Cluster request2Support from "re-" + "quest2Support" |
+| SWIT_00012 | CamelCase fragment attributes | bswModuleDocumentation from "bswModule" + "Documentation" |
+
+**Edge Case Handling Requirements:**
+
+1. **Multi-line attribute parsing:**
+   - Attribute names split across PDF lines must be concatenated
+   - Hyphenated word breaks (e.g., "re-" + "quest2Support" → "request2Support")
+   - CamelCase fragments (e.g., "bswModule" + "Documentation" → "bswModuleDocumentation")
+   - Attribute types split across lines (e.g., "SwComponent" + "Documentation" → "SwComponentDocumentation")
+
+2. **Enumeration literal handling:**
+   - Multi-page literal lists (maintain context across page boundaries)
+   - Stacked literal names in single cell (combine into one literal name)
+   - Tag extraction (atp.EnumerationLiteralIndex, xml.name)
+   - Multi-line descriptions for literals
+   - Immutability enforcement (tuple for literals)
+
+3. **Base class and ATP interface parsing:**
+   - Distinguish between regular bases and ATP interfaces
+   - ATP interfaces go into `implements` field, not `bases`
+   - Base class corruption detection (e.g., prevent "SwComponentTypeClass AtomicSwComponentType (abstract)")
+
+4. **Source location tracking:**
+   - PDF file name
+   - Page number
+   - AUTOSAR standard and release information
+   - Track for all types (classes, enumerations, primitives)
+
+**Test Execution Strategy:**
+- Java tests mirror Python test structure and assertions
+- Test fixtures: session-scoped for performance (same PDF parsed once per test session)
+- Expected counts: minimum thresholds to allow for future PDF version changes
+- Same PDF files used as reference: `../autosar-pdf/examples/pdf/`
+
 ### Regression Testing
 
 **Comparison Method:**
@@ -616,8 +669,15 @@ Maven - standard, widely used, XML configuration
 - 100% match for inheritance relationships
 - 95%+ match for attribute extraction (allow for cell refinement differences)
 
+**Python Integration Test Compatibility:**
+- All 11 Python integration tests (SWIT_00001-SWIT_00012) must pass in Java implementation
+- Test assertions must match Python test expectations exactly
+- Edge case handling (multi-line attributes, camelCase fragments, hyphenated breaks) must match Python behavior
+- Output format (JSON/Markdown) must be structurally equivalent to Python output
+
 **Failure Handling:**
 - If attribute extraction falls below 95% match: test fails, differences logged with context (page number, cell location, expected vs actual)
+- If any Python integration test fails: implementation not complete
 - Full regression test suite must pass before considering implementation complete
 - Individual test failures are reviewed and categorized as: implementation bugs vs. acceptable extraction differences
 
@@ -637,3 +697,6 @@ Next step: Invoke `writing-plans` skill to create detailed implementation tasks 
 - Reference Python implementation: `../autosar-pdf/`
 - AUTOSAR PDF examples: `../autosar-pdf/examples/pdf/`
 - Requirements docs from reference project: `../autosar-pdf/docs/requirements/`
+- Python integration tests: `../autosar-pdf/tests/integration/test_pdf_integration.py` (must all pass)
+- Test case files: `../autosar-pdf/tests/integration/timing_extensions_class_list.txt` (expected class list)
+- Test PDFs for edge cases: `../autosar-pdf/examples/pdf/*.jpg` (enum1.jpg, enum2.jpg, enum3.png, attributes.jpg)
