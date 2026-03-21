@@ -1,0 +1,499 @@
+"""Pytest configuration and fixtures for integration tests.
+
+This module provides session-scoped fixtures for caching parsed PDF data,
+significantly improving integration test performance by avoiding redundant
+PDF parsing across multiple tests.
+
+Performance optimizations:
+- Session-scoped fixtures prevent redundant PDF parsing
+- Pre-computed lookup tables for frequently accessed packages/classes
+"""
+
+import os
+from typing import List, Optional, Tuple
+
+import pytest
+
+from autosar_pdf2txt.models import AutosarClass, AutosarDoc, AutosarEnumeration, AutosarPackage
+from autosar_pdf2txt.parser import PdfParser
+
+
+@pytest.fixture(scope="session")
+def parser() -> PdfParser:
+    """Create a single PdfParser instance for the entire test session.
+
+    This fixture is session-scoped to avoid creating multiple parser instances.
+
+    Returns:
+        Shared PdfParser instance for all tests.
+    """
+    return PdfParser()
+
+
+@pytest.fixture(scope="session")
+def generic_structure_template_pdf(parser: PdfParser) -> AutosarDoc:
+    """Parse and cache the GenericStructureTemplate PDF.
+
+    This fixture parses the PDF once per session and caches the result.
+    This PDF contains descriptive text that can be incorrectly parsed as
+    package names, serving as a regression test for package path validation.
+
+    Args:
+        parser: Shared PdfParser instance.
+
+    Returns:
+        AutosarDoc containing parsed packages and root classes.
+
+    Raises:
+        FileNotFoundError: If the PDF file is not found.
+    """
+    pdf_path = "examples/pdf/AUTOSAR_FO_TPS_GenericStructureTemplate.pdf"
+
+    if not os.path.exists(pdf_path):
+        raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+
+    return parser.parse_pdf(pdf_path)
+
+
+@pytest.fixture(scope="session")
+def generic_structure_sw_component_type(generic_structure_template_pdf: AutosarDoc) -> AutosarClass:
+    """Cache the SwComponentType class from GenericStructureTemplate PDF.
+
+    This fixture pre-fetches and caches the SwComponentType class,
+    avoiding repeated package navigation in tests.
+
+    Args:
+        generic_structure_template_pdf: Parsed GenericStructureTemplate PDF data.
+
+    Returns:
+        The SwComponentType AutosarClass.
+
+    Raises:
+        ValueError: If SwComponentType class is not found.
+    """
+    # Find M2 package (root metamodel package)
+    m2 = generic_structure_template_pdf.get_package("M2")
+    if not m2:
+        raise ValueError("M2 package not found")
+
+    # Navigate to AUTOSARTemplates -> SWComponentTemplate -> Components
+    autosar_templates = m2.get_subpackage("AUTOSARTemplates")
+    if not autosar_templates:
+        raise ValueError("AUTOSARTemplates package not found")
+
+    sw_component_template = autosar_templates.get_subpackage("SWComponentTemplate")
+    if not sw_component_template:
+        raise ValueError("SWComponentTemplate package not found")
+
+    components = sw_component_template.get_subpackage("Components")
+    if not components:
+        raise ValueError("Components package not found")
+
+    sw_component_type = components.get_class("SwComponentType")
+    if not sw_component_type:
+        raise ValueError("SwComponentType class not found")
+
+    return sw_component_type
+
+
+@pytest.fixture(scope="session")
+def generic_structure_arelement(generic_structure_template_pdf: AutosarDoc) -> AutosarClass:
+    """Cache the ARElement class from GenericStructureTemplate PDF.
+
+    This fixture pre-fetches and caches the ARElement class,
+    avoiding repeated package navigation in tests.
+
+    Args:
+        generic_structure_template_pdf: Parsed GenericStructureTemplate PDF data.
+
+    Returns:
+        The ARElement AutosarClass.
+
+    Raises:
+        ValueError: If ARElement class is not found.
+    """
+    # Find M2 package (root metamodel package)
+    m2 = generic_structure_template_pdf.get_package("M2")
+    if not m2:
+        raise ValueError("M2 package not found")
+
+    # Navigate to AUTOSARTemplates -> GenericStructure -> GeneralTemplateClasses -> ARPackage
+    autosar_templates = m2.get_subpackage("AUTOSARTemplates")
+    if not autosar_templates:
+        raise ValueError("AUTOSARTemplates package not found")
+
+    generic_structure = autosar_templates.get_subpackage("GenericStructure")
+    if not generic_structure:
+        raise ValueError("GenericStructure package not found")
+
+    general_template_classes = generic_structure.get_subpackage("GeneralTemplateClasses")
+    if not general_template_classes:
+        raise ValueError("GeneralTemplateClasses package not found")
+
+    ar_package = general_template_classes.get_subpackage("ARPackage")
+    if not ar_package:
+        raise ValueError("ARPackage package not found")
+
+    arelement = ar_package.get_class("ARElement")
+    if not arelement:
+        raise ValueError("ARElement class not found")
+
+    return arelement
+
+
+@pytest.fixture(scope="session")
+def generic_structure_referrable(generic_structure_template_pdf: AutosarDoc) -> AutosarClass:
+    """Cache the Referrable class from GenericStructureTemplate PDF.
+
+    This fixture pre-fetches and caches the Referrable class,
+    avoiding repeated package navigation in tests.
+
+    Args:
+        generic_structure_template_pdf: Parsed GenericStructureTemplate PDF data.
+
+    Returns:
+        The Referrable AutosarClass.
+
+    Raises:
+        ValueError: If Referrable class is not found.
+    """
+    # Find M2 package (root metamodel package)
+    m2 = generic_structure_template_pdf.get_package("M2")
+    if not m2:
+        raise ValueError("M2 package not found")
+
+    # Navigate to AUTOSARTemplates -> GenericStructure -> GeneralTemplateClasses -> Identifiable
+    autosar_templates = m2.get_subpackage("AUTOSARTemplates")
+    if not autosar_templates:
+        raise ValueError("AUTOSARTemplates package not found")
+
+    generic_structure = autosar_templates.get_subpackage("GenericStructure")
+    if not generic_structure:
+        raise ValueError("GenericStructure package not found")
+
+    general_template_classes = generic_structure.get_subpackage("GeneralTemplateClasses")
+    if not general_template_classes:
+        raise ValueError("GeneralTemplateClasses package not found")
+
+    identifiable = general_template_classes.get_subpackage("Identifiable")
+    if not identifiable:
+        raise ValueError("Identifiable package not found")
+
+    referrable = identifiable.get_class("Referrable")
+    if not referrable:
+        raise ValueError("Referrable class not found")
+
+    return referrable
+
+
+@pytest.fixture(scope="session")
+def timing_extensions_pdf(parser: PdfParser) -> AutosarDoc:
+    """Parse and cache the TimingExtensions PDF.
+
+    This fixture parses the PDF once per session and caches the result.
+
+    Args:
+        parser: Shared PdfParser instance.
+
+    Returns:
+        AutosarDoc containing parsed packages and root classes.
+
+    Raises:
+        FileNotFoundError: If the PDF file is not found.
+    """
+    pdf_path = "examples/pdf/AUTOSAR_CP_TPS_TimingExtensions.pdf"
+
+    if not os.path.exists(pdf_path):
+        raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+
+    return parser.parse_pdf(pdf_path)
+
+
+@pytest.fixture(scope="session")
+def bsw_module_description_pdf(parser: PdfParser) -> AutosarDoc:
+    """Parse and cache the BSWModuleDescriptionTemplate PDF.
+
+    This fixture parses the PDF once per session and caches the result.
+
+    Args:
+        parser: Shared PdfParser instance.
+
+    Returns:
+        AutosarDoc containing parsed packages and root classes.
+
+    Raises:
+        FileNotFoundError: If the PDF file is not found.
+    """
+    pdf_path = "examples/pdf/AUTOSAR_CP_TPS_BSWModuleDescriptionTemplate.pdf"
+
+    if not os.path.exists(pdf_path):
+        raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+
+    return parser.parse_pdf(pdf_path)
+
+
+@pytest.fixture(scope="session")
+def bsw_module_description_atomic_sw_component_type(bsw_module_description_pdf: AutosarDoc) -> AutosarClass:
+    """Cache the AtomicSwComponentType class from BSWModuleDescriptionTemplate PDF.
+
+    This fixture pre-fetches and caches the AtomicSwComponentType class,
+    avoiding repeated package navigation in tests.
+
+    Args:
+        bsw_module_description_pdf: Parsed BSWModuleDescriptionTemplate PDF data.
+
+    Returns:
+        The AtomicSwComponentType AutosarClass.
+
+    Raises:
+        ValueError: If AtomicSwComponentType class is not found.
+    """
+    # Find M2 package (root metamodel package)
+    m2 = bsw_module_description_pdf.get_package("M2")
+    if not m2:
+        raise ValueError("M2 package not found")
+
+    # Navigate to AUTOSARTemplates -> SWComponentTemplate -> Components
+    autosar_templates = m2.get_subpackage("AUTOSARTemplates")
+    if not autosar_templates:
+        raise ValueError("AUTOSARTemplates package not found")
+
+    sw_component_template = autosar_templates.get_subpackage("SWComponentTemplate")
+    if not sw_component_template:
+        raise ValueError("SWComponentTemplate package not found")
+
+    components = sw_component_template.get_subpackage("Components")
+    if not components:
+        raise ValueError("Components package not found")
+
+    atomic_sw_component_type = components.get_class("AtomicSwComponentType")
+    if not atomic_sw_component_type:
+        raise ValueError("AtomicSwComponentType class not found")
+
+    return atomic_sw_component_type
+
+
+@pytest.fixture(scope="session")
+def timing_extensions_atomic_sw_component_type(timing_extensions_pdf: AutosarDoc) -> AutosarClass:
+    """Cache the AtomicSwComponentType class from TimingExtensions PDF.
+
+    This fixture pre-fetches and caches the AtomicSwComponentType class,
+    avoiding repeated package navigation in tests.
+
+    Args:
+        timing_extensions_pdf: Parsed TimingExtensions PDF data.
+
+    Returns:
+        The AtomicSwComponentType AutosarClass.
+
+    Raises:
+        ValueError: If AtomicSwComponentType class is not found.
+    """
+    # Find M2 package (root metamodel package)
+    m2 = timing_extensions_pdf.get_package("M2")
+    if not m2:
+        raise ValueError("M2 package not found")
+
+    # Navigate to AUTOSARTemplates -> SWComponentTemplate -> Components
+    autosar_templates = m2.get_subpackage("AUTOSARTemplates")
+    if not autosar_templates:
+        raise ValueError("AUTOSARTemplates package not found")
+
+    sw_component_template = autosar_templates.get_subpackage("SWComponentTemplate")
+    if not sw_component_template:
+        raise ValueError("SWComponentTemplate package not found")
+
+    components = sw_component_template.get_subpackage("Components")
+    if not components:
+        raise ValueError("Components package not found")
+
+    atomic_sw_component_type = components.get_class("AtomicSwComponentType")
+    if not atomic_sw_component_type:
+        raise ValueError("AtomicSwComponentType class not found")
+
+    return atomic_sw_component_type
+
+
+def find_class_by_name(packages: List[AutosarPackage], class_name: str) -> Optional[Tuple[AutosarPackage, AutosarClass]]:
+    """Find a class by name across all packages.
+
+    This is an optimized helper that uses early termination once
+    the target class is found, avoiding unnecessary traversal.
+
+    Args:
+        packages: List of AutosarPackage objects to search.
+        class_name: Name of the class to find.
+
+    Returns:
+        Tuple of (package, class) if found, None otherwise.
+    """
+    def search(pkg: AutosarPackage) -> Optional[Tuple[AutosarPackage, AutosarClass]]:
+        # Search in current package
+        for typ in pkg.types:
+            if isinstance(typ, AutosarClass) and typ.name == class_name:
+                return (pkg, typ)
+
+        # Search in subpackages
+        for subpkg in pkg.subpackages:
+            result = search(subpkg)
+            if result:
+                return result
+
+        return None
+
+    for pkg in packages:
+        result = search(pkg)
+        if result:
+            return result
+
+    return None
+
+
+@pytest.fixture(scope="session")
+def generic_structure_diagnostic_debounce_enum(
+    generic_structure_template_pdf: AutosarDoc
+) -> AutosarEnumeration:
+    """Cache the DiagnosticDebounceBehaviorEnum from GenericStructureTemplate PDF.
+
+    This fixture pre-fetches and caches the DiagnosticDebounceBehaviorEnum,
+    avoiding repeated package navigation in tests.
+
+    Args:
+        generic_structure_template_pdf: Parsed GenericStructureTemplate PDF data.
+
+    Returns:
+        The DiagnosticDebounceBehaviorEnum AutosarEnumeration.
+
+    Raises:
+        ValueError: If DiagnosticDebounceBehaviorEnum is not found.
+    """
+    # Find M2 package (root metamodel package)
+    m2 = generic_structure_template_pdf.get_package("M2")
+    if not m2:
+        raise ValueError("M2 package not found")
+
+    # Navigate to AUTOSARTemplates -> DiagnosticExtract -> Dem -> DiagnosticDebouncingAlgorithm
+    autosar_templates = m2.get_subpackage("AUTOSARTemplates")
+    if not autosar_templates:
+        raise ValueError("AUTOSARTemplates package not found")
+
+    diagnostic_extract = autosar_templates.get_subpackage("DiagnosticExtract")
+    if not diagnostic_extract:
+        raise ValueError("DiagnosticExtract package not found")
+
+    dem = diagnostic_extract.get_subpackage("Dem")
+    if not dem:
+        raise ValueError("Dem package not found")
+
+    diagnostic_debouncing_algorithm = dem.get_subpackage("DiagnosticDebouncingAlgorithm")
+    if not diagnostic_debouncing_algorithm:
+        raise ValueError("DiagnosticDebouncingAlgorithm package not found")
+
+    debounce_enum = diagnostic_debouncing_algorithm.get_enumeration("DiagnosticDebounceBehaviorEnum")
+    if not debounce_enum:
+        raise ValueError("DiagnosticDebounceBehaviorEnum not found")
+
+    return debounce_enum
+
+
+@pytest.fixture(scope="session")
+def diagnostic_extract_template_pdf(parser: PdfParser) -> AutosarDoc:
+    """Parse and cache the DiagnosticExtractTemplate PDF.
+
+    This fixture parses the PDF once per session and caches the result.
+    This PDF contains enumeration literals with tags (atp.EnumerationLiteralIndex, xml.name)
+    and multi-page enumeration literal lists.
+
+    Args:
+        parser: Shared PdfParser instance.
+
+    Returns:
+        AutosarDoc containing parsed packages and root classes.
+
+    Raises:
+        FileNotFoundError: If the PDF file is not found.
+    """
+    pdf_path = "examples/pdf/AUTOSAR_CP_TPS_DiagnosticExtractTemplate.pdf"
+
+    if not os.path.exists(pdf_path):
+        raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+
+    doc = parser.parse_pdf(pdf_path)
+
+    print("\n=== DiagnosticExtractTemplate PDF parsed ===")
+    print(f"  Packages: {len(doc.packages)}")
+    print(f"  Root classes: {len(doc.root_classes)}")
+
+    return doc
+
+
+@pytest.fixture(scope="session")
+def diagnostic_extract_j1939_cluster(diagnostic_extract_template_pdf: AutosarDoc) -> Optional[AutosarClass]:
+    """Cache the J1939Cluster class from DiagnosticExtractTemplate PDF.
+
+    This fixture pre-fetches and caches the J1939Cluster class which contains
+    the hyphenated attribute name continuation pattern (re- + quest2Support = request2Support).
+
+    Args:
+        diagnostic_extract_template_pdf: Parsed DiagnosticExtractTemplate PDF data.
+
+    Returns:
+        The J1939Cluster AutosarClass if found, None otherwise.
+
+    Note:
+        Returns None if the class cannot be found (e.g., PDF parsing issues or class not present).
+        Tests using this fixture should handle None gracefully using pytest.skip if needed.
+    """
+    # Find J1939Cluster class using the helper function
+    result = find_class_by_name(diagnostic_extract_template_pdf.packages, "J1939Cluster")
+
+    if result:
+        package, j1939_cluster = result
+        print("\n=== J1939Cluster found ===")
+        print(f"  Package: {package.name}")
+        print(f"  Attributes: {len(j1939_cluster.attributes)}")
+        return j1939_cluster
+
+    print("\n=== J1939Cluster not found ===")
+    return None
+
+
+@pytest.fixture(scope="session")
+def bsw_module_description_bsw_module_description(bsw_module_description_pdf: AutosarDoc) -> AutosarClass:
+    """Cache the BswModuleDescription class from BSWModuleDescriptionTemplate PDF.
+
+    This fixture pre-fetches and caches the BswModuleDescription class,
+    avoiding repeated package navigation in tests.
+
+    Args:
+        bsw_module_description_pdf: Parsed BSWModuleDescriptionTemplate PDF data.
+
+    Returns:
+        The BswModuleDescription AutosarClass.
+
+    Raises:
+        ValueError: If BswModuleDescription class is not found.
+    """
+    # Find M2 package (root metamodel package)
+    m2 = bsw_module_description_pdf.get_package("M2")
+    if not m2:
+        raise ValueError("M2 package not found")
+
+    # Navigate to AUTOSARTemplates -> BswModuleTemplate -> BswOverview
+    autosar_templates = m2.get_subpackage("AUTOSARTemplates")
+    if not autosar_templates:
+        raise ValueError("AUTOSARTemplates package not found")
+
+    bsw_module_template = autosar_templates.get_subpackage("BswModuleTemplate")
+    if not bsw_module_template:
+        raise ValueError("BswModuleTemplate package not found")
+
+    bsw_overview = bsw_module_template.get_subpackage("BswOverview")
+    if not bsw_overview:
+        raise ValueError("BswOverview package not found")
+
+    bsw_module_description = bsw_overview.get_class("BswModuleDescription")
+    if not bsw_module_description:
+        raise ValueError("BswModuleDescription class not found")
+
+    return bsw_module_description

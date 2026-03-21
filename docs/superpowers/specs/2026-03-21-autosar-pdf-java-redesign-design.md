@@ -694,9 +694,11 @@ Next step: Invoke `writing-plans` skill to create detailed implementation tasks 
 
 ## References
 
-- Reference Python implementation: `../autosar-pdf/`
-- AUTOSAR PDF examples: `../autosar-pdf/examples/pdf/`
-- Requirements docs from reference project: `../autosar-pdf/docs/requirements/`
-- Python integration tests: `../autosar-pdf/tests/integration/test_pdf_integration.py` (must all pass)
-- Test case files: `../autosar-pdf/tests/integration/timing_extensions_class_list.txt` (expected class list)
-- Test PDFs for edge cases: `../autosar-pdf/examples/pdf/*.jpg` (enum1.jpg, enum2.jpg, enum3.png, attributes.jpg)
+- Reference Python implementation: `docs/reference/` (copied from original for reference only)
+- AUTOSAR PDF examples: `examples/pdf/` (copied from original)
+- Requirements docs: `docs/reference/docs/requirements/` (copied from original)
+- Python integration tests: `tests/reference/integration/test_pdf_integration.py` (must all pass)
+- Test case files: `tests/reference/integration/timing_extensions_class_list.txt` (expected class list)
+- Test PDFs for edge cases: `examples/pdf/` (all PDF files copied from original)
+- Development documentation: `docs/reference/docs/development/`
+- Test cases documentation: `docs/reference/docs/test_cases/`

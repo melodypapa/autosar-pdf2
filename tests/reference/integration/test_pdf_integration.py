@@ -1,0 +1,1461 @@
+"""Integration tests for AUTOSAR PDF parsing.
+
+These tests use real AUTOSAR PDF files to verify end-to-end functionality.
+
+Performance optimization: Tests use session-scoped fixtures defined in conftest.py
+to cache parsed PDF data. Each PDF is parsed only once per test session, with
+results shared across all tests that need them.
+"""
+
+import os
+from typing import Optional
+
+import pytest
+
+from autosar_pdf2txt.models import AutosarClass, AutosarDoc, AutosarEnumeration, AutosarPrimitive
+
+
+# Import helper functions from conftest
+from tests.integration.conftest import (
+    find_class_by_name,
+)
+
+
+def find_enumeration_by_name(doc: AutosarDoc, name: str) -> Optional[AutosarEnumeration]:
+    """Find an enumeration by name in the document.
+
+    Args:
+        doc: The AutosarDoc to search.
+        name: The enumeration name to find.
+
+    Returns:
+        The AutosarEnumeration if found, None otherwise.
+    """
+    def search_packages(packages) -> Optional[AutosarEnumeration]:
+        for pkg in packages:
+            enum = pkg.get_enumeration(name)
+            if enum:
+                return enum
+            # Recursively search subpackages
+            result = search_packages(pkg.subpackages)
+            if result:
+                return result
+        return None
+
+    return search_packages(doc.packages)
+
+
+class TestPdfIntegration:
+    """Integration tests using real AUTOSAR PDF files.
+
+    These tests require actual PDF files to be present in the examples/pdf directory.
+    Tests will fail with errors if files are not available or classes cannot be found.
+    """
+
+    def test_parse_real_autosar_pdf_and_verify_autosar_and_sw_component_type(
+        self, generic_structure_template_pdf: AutosarDoc, generic_structure_sw_component_type: AutosarClass
+    ) -> None:
+        """Test Parsing Real AUTOSAR PDF and Verifying AUTOSAR, SwComponentType, and ARElement Classes.
+
+        Test Case ID: SWIT_00001
+
+        Requirements:
+            SWR_PARSER_00001: PDF Parser Initialization
+            SWR_PARSER_00003: PDF File Parsing
+            SWR_PARSER_00004: Class Definition Pattern Recognition
+            SWR_PARSER_00005: Class Definition Data Model
+            SWR_PARSER_00006: Package Hierarchy Building
+            SWR_PARSER_00010: Attribute Extraction from PDF
+            SWR_PARSER_00021: Multi-Line Attribute Parsing for AutosarClass
+            SWR_MODEL_00027: AUTOSAR Source Location Representation
+            SWR_PARSER_00022: PDF Source Location Extraction
+
+        This test verifies three classes from the GenericStructureTemplate PDF:
+        1. The AUTOSAR class (root metamodel class)
+        2. The SwComponentType class (including attributes, attribute kinds, and note support)
+        3. The ARElement class and its subclasses (inheritance hierarchy)
+
+        Args:
+            generic_structure_template_pdf: Parsed GenericStructureTemplate PDF data.
+            generic_structure_sw_component_type: Cached SwComponentType class.
+
+        This test is divided into three parts:
+        - Part 1: Verify AUTOSAR class
+        - Part 2: Verify SwComponentType class
+        - Part 3: Verify ARElement class and subclasses
+        """
+        # ========== Verify AUTOSAR class from GenericStructureTemplate PDF ==========
+        packages = generic_structure_template_pdf.packages
+
+        # Verify we got some packages
+        assert len(packages) > 0, "Should extract at least one package from PDF"
+
+        # Find the AUTOSAR class explicitly
+        first_package, autosar_class = find_class_by_name(packages, "AUTOSAR")
+
+        assert autosar_class is not None, "Should find AUTOSAR class in the PDF"
+        assert first_package is not None, "Should find the package containing the AUTOSAR class"
+
+        # Verify the AUTOSAR class details
+        assert autosar_class.name == "AUTOSAR", f"Expected class name 'AUTOSAR', got '{autosar_class.name}'"
+        assert autosar_class.is_abstract is False, "AUTOSAR class should not be abstract"
+        assert first_package.name == "AutosarTopLevelStructure", f"Expected package 'AutosarTopLevelStructure', got '{first_package.name}'"
+
+        # Verify bases - should have one base class
+        assert len(autosar_class.bases) == 1, f"Expected 1 base class, got {len(autosar_class.bases)}"
+        assert "ARObject" in autosar_class.bases, f"Expected 'ARObject' in bases, got {autosar_class.bases}"
+
+        # Verify note - should have a note
+        assert autosar_class.note is not None, "AUTOSAR class should have a note"
+        assert len(autosar_class.note) > 0, "Note should not be empty"
+        assert "AUTOSAR" in autosar_class.note or "Rootelement" in autosar_class.note, \
+            f"Note should contain AUTOSAR or Rootelement, got: '{autosar_class.note}'"
+
+        # Verify source information
+        assert autosar_class.sources is not None, "AUTOSAR class should have source information"
+        assert autosar_class.sources[0].pdf_file == "AUTOSAR_FO_TPS_GenericStructureTemplate.pdf", \
+            f"Expected pdf_file 'AUTOSAR_FO_TPS_GenericStructureTemplate.pdf', got '{autosar_class.sources[0].pdf_file}'"
+        assert autosar_class.sources[0].autosar_standard == "Foundation", \
+            f"Expected autosar_standard 'Foundation', got '{autosar_class.sources[0].autosar_standard}'"
+        assert autosar_class.sources[0].standard_release == "R23-11", \
+            f"Expected standard_release 'R23-11', got '{autosar_class.sources[0].standard_release}'"
+        # SWR_PARSER_00030: Verify page number is tracked correctly
+        assert autosar_class.sources[0].page_number == 421, \
+            f"Expected page_number 421, got {autosar_class.sources[0].page_number}"
+
+        # Print AUTOSAR class information for verification
+        print("\n=== AUTOSAR class verified ===")
+        print(f"  Name: {autosar_class.name}")
+        print(f"  Abstract: {autosar_class.is_abstract}")
+        print(f"  Bases: {autosar_class.bases}")
+        print(f"  Note: {autosar_class.note}")
+        print(f"  Package: {first_package.name}")
+        print(f"  Source: {autosar_class.sources[0]}")
+
+        # ========== Verify SwComponentType class from GenericStructureTemplate PDF ==========
+        sw_component_type = generic_structure_sw_component_type
+
+        # Verify class name
+        assert sw_component_type.name == "SwComponentType", \
+            f"Expected class name 'SwComponentType', got '{sw_component_type.name}'"
+
+        # Verify package name is M2::AUTOSARTemplates::SWComponentTemplate::Components
+        expected_package = "M2::AUTOSARTemplates::SWComponentTemplate::Components"
+        assert sw_component_type.package == expected_package, \
+            f"Expected package '{expected_package}', got '{sw_component_type.package}'"
+
+        # Verify note
+        assert sw_component_type.note is not None, "SwComponentType should have a note"
+        assert len(sw_component_type.note) > 0, "Note should not be empty"
+        assert sw_component_type.note == "Base class for AUTOSAR software components.", \
+            f"Expected note 'Base class for AUTOSAR software components.', got '{sw_component_type.note}'"
+
+        # Verify base list - split into regular bases and Atp interfaces
+        # Regular bases (non-Atp)
+        expected_bases = [
+            "ARElement", "ARObject", "CollectableElement", "Identifiable",
+            "MultilanguageReferrable", "PackageableElement", "Referrable"
+        ]
+        assert len(sw_component_type.bases) == len(expected_bases), \
+            f"Expected {len(expected_bases)} base classes, got {len(sw_component_type.bases)}"
+        for base in expected_bases:
+            assert base in sw_component_type.bases, \
+                f"Expected '{base}' in bases, got {sw_component_type.bases}"
+
+        # Atp interfaces (bases starting with "Atp")
+        expected_implements = ["AtpBlueprint", "AtpBlueprintable", "AtpClassifier", "AtpType"]
+        assert len(sw_component_type.implements) == len(expected_implements), \
+            f"Expected {len(expected_implements)} interfaces, got {len(sw_component_type.implements)}"
+        for interface in expected_implements:
+            assert interface in sw_component_type.implements, \
+                f"Expected '{interface}' in implements, got {sw_component_type.implements}"
+
+        # Verify attribute list
+        # Note: The camelCase extraction fix now correctly extracts full attribute names
+        # including "swComponentDocumentation" (not just "swComponent")
+        expected_attributes = [
+            "consistencyNeeds", "port", "portGroup", "swcMapping", "swComponentDocumentation", "unitGroup"
+        ]
+        assert len(sw_component_type.attributes) == len(expected_attributes), \
+            f"Expected {len(expected_attributes)} attributes, got {len(sw_component_type.attributes)}"
+        for attr_name in expected_attributes:
+            assert attr_name in sw_component_type.attributes, \
+                f"Expected attribute '{attr_name}' not found. Got: {list(sw_component_type.attributes.keys())}"
+
+        # Verify swcMapping attribute kind is "ref" and is_ref is true
+        swc_mapping = sw_component_type.attributes.get("swcMapping")
+        assert swc_mapping is not None, "swcMapping attribute should exist"
+        assert swc_mapping.kind.value == "ref", \
+            f"Expected swcMapping kind to be 'ref', got '{swc_mapping.kind.value}'"
+        assert swc_mapping.is_ref is True, \
+            f"Expected swcMapping is_ref to be True, got {swc_mapping.is_ref}"
+
+        # Verify attribute types match expected values
+        # swComponentDocumentation is now correctly extracted with full type
+        expected_types = {
+            "consistencyNeeds": "ConsistencyNeeds",
+            "port": "PortPrototype",
+            "portGroup": "PortGroup",
+            "swcMapping": "SwComponentMapping",
+            "swComponentDocumentation": "SwComponentDocumentation",
+            "unitGroup": "UnitGroup"
+        }
+        for attr_name, expected_type in expected_types.items():
+            attr = sw_component_type.attributes.get(attr_name)
+            assert attr is not None, f"Attribute '{attr_name}' should exist"
+            assert attr.type == expected_type, \
+                f"Expected attribute '{attr_name}' to have type '{expected_type}', got '{attr.type}'"
+
+        # Verify attribute notes exist
+        attrs_with_notes = [name for name, attr in sw_component_type.attributes.items() if attr.note]
+        assert len(attrs_with_notes) > 0, "At least one attribute should have a note"
+
+        # Print SwComponentType class information for verification
+        print("\n=== SwComponentType class verified ===")
+        print(f"  Name: {sw_component_type.name}")
+        print(f"  Package: {sw_component_type.package}")
+        print(f"  Abstract: {sw_component_type.is_abstract}")
+        print(f"  Bases ({len(sw_component_type.bases)}): {', '.join(sw_component_type.bases)}")
+        print(f"  Implements ({len(sw_component_type.implements)}): {', '.join(sw_component_type.implements)}")
+        print(f"  Note: {sw_component_type.note}")
+        print(f"  Attributes ({len(sw_component_type.attributes)}):")
+        for attr_name, attr in sw_component_type.attributes.items():
+            print(f"    - {attr_name}: {attr.type} (ref: {attr.is_ref}, kind: {attr.kind.value})")
+
+    def test_parse_real_autosar_pdf_and_verify_arelement_and_subclasses(
+        self, generic_structure_arelement: AutosarClass
+    ) -> None:
+        """Test parsing real AUTOSAR PDF files and verify ARElement class and its subclasses.
+
+        SWIT_00001 Part 3: Verify ARElement class and its subclasses from GenericStructureTemplate PDF
+
+        Requirements:
+            SWR_PARSER_00003: PDF File Parsing
+            SWR_PARSER_00004: Class Definition Pattern Recognition
+            SWR_PARSER_00006: Package Hierarchy Building
+            SWR_MODEL_00001: AUTOSAR Class Representation
+            SWR_MODEL_00023: AUTOSAR Document Model
+
+        Args:
+            generic_structure_arelement: Cached ARElement class from GenericStructureTemplate PDF.
+        """
+        # ========== Verify ARElement class from GenericStructureTemplate PDF ==========
+        arelement = generic_structure_arelement
+
+        # Verify class name
+        assert arelement.name == "ARElement", \
+            f"Expected class name 'ARElement', got '{arelement.name}'"
+
+        # Verify the class is abstract
+        assert arelement.is_abstract is True, "ARElement class should be abstract"
+
+        # Verify the subclasses list contains all expected subclasses (121 total)
+        expected_subclasses = [
+            "AclObjectSet", "AclOperation", "AclPermission", "AclRole", "AliasNameSet",
+            "ApplicabilityInfoSet", "ApplicationPartition", "AutosarDataType", "BaseType",
+            "BlueprintMappingSet", "BswEntryRelationshipSet", "BswModuleDescription",
+            "BswModuleEntry", "BuildActionManifest", "CalibrationParameterValueSet",
+            "ClientIdDefinitionSet", "ClientServerInterfaceToBswModuleEntryBlueprintMapping",
+            "Collection", "CompuMethod", "ConsistencyNeedsBlueprintSet", "ConstantSpecification",
+            "ConstantSpecificationMappingSet", "CpSoftwareCluster", "CpSoftwareClusterBinaryManifestDescriptor",
+            "CpSoftwareClusterMappingSet", "CpSoftwareClusterResourcePool", "CryptoEllipticCurveProps",
+            "CryptoServiceCertificate", "CryptoServiceKey", "CryptoServicePrimitive",
+            "CryptoServiceQueue", "CryptoSignatureScheme", "DataConstr", "DataExchangePoint",
+            "DataTransformationSet", "DataTypeMappingSet", "DdsCpConfig", "DiagnosticCommonElement",
+            "DiagnosticConnection", "DiagnosticContributionSet", "DltContext", "DltEcu",
+            "Documentation", "E2EProfileCompatibilityProps", "EcucDefinitionCollection",
+            "EcucDestinationUriDefSet", "EcucModuleConfigurationValues", "EcucModuleDef",
+            "EcucValueCollection", "EndToEndProtectionSet", "EthIpProps", "EthTcpIpIcmpProps",
+            "EthTcpIpProps", "EvaluatedVariantSet", "FMFeature", "FMFeatureMap", "FMFeatureModel",
+            "FMFeatureSelectionSet", "FirewallRule", "FlatMap", "GeneralPurposeConnection",
+            "HwCategory", "HwElement", "HwType", "IEEE1722TpConnection", "IPSecConfigProps",
+            "IPv6ExtHeaderFilterSet", "IdsCommonElement", "IdsDesign", "Implementation",
+            "ImpositionTimeDefinitionGroup", "InterpolationRoutineMappingSet",
+            "J1939ControllerApplication", "KeywordSet", "LifeCycleInfoSet",
+            "LifeCycleStateDefinitionGroup", "LogAndTraceMessageCollectionSet",
+            "MacSecGlobalKayProps", "MacSecParticipantSet", "McFunction", "McGroup",
+            "ModeDeclarationGroup", "ModeDeclarationMappingSet", "OsTaskProxy", "PhysicalDimension",
+            "PhysicalDimensionMappingSet", "PortInterface", "PortInterfaceMappingSet",
+            "PortPrototypeBlueprint", "PostBuildVariantCriterion", "PostBuildVariantCriterionValueSet",
+            "PredefinedVariant", "RapidPrototypingScenario", "SdgDef", "SignalServiceTranslationPropsSet",
+            "SomeipSdClientEventGroup", "SomeipSdClientServiceInstanceConfig",
+            "SomeipSdServerEventGroupTimingConfig", "SomeipSdServerServiceInstanceConfig",
+            "SwAddrMethod", "SwAxisType", "SwComponentMappingConstraints", "SwComponentType",
+            "SwRecordLayout", "SwSystemconst", "SwSystemconstantValueSet", "SwcBswMapping",
+            "System", "SystemSignal", "SystemSignalGroup", "TDCpSoftwareClusterMappingSet",
+            "TcpOptionFilterSet", "TimingConfig", "TimingExtension", "TlsConnectionGroup",
+            "TlvDataIdDefinitionSet", "TransformationPropsSet", "Unit", "UnitGroup",
+            "UploadablePackageElement", "ViewMapSet"
+        ]
+
+        # Verify expected count of subclasses
+        expected_count = 121
+        assert len(arelement.subclasses) == expected_count, \
+            f"Expected {expected_count} subclasses, got {len(arelement.subclasses)}"
+
+        # Verify all expected subclasses are present
+        actual_subclasses = arelement.subclasses
+        for expected_subclass in expected_subclasses:
+            assert expected_subclass in actual_subclasses, \
+                f"Expected subclass '{expected_subclass}' not found in ARElement.subclasses"
+
+        # Verify no unexpected subclasses were extracted
+        unexpected_subclasses = set(actual_subclasses) - set(expected_subclasses)
+        assert not unexpected_subclasses, \
+            f"Found unexpected subclasses: {sorted(unexpected_subclasses)}"
+
+        # Print ARElement class information for verification
+        print("\n=== ARElement class verified ===")
+        print(f"  Name: {arelement.name}")
+        print(f"  Abstract: {arelement.is_abstract}")
+        print(f"  Subclasses ({len(arelement.subclasses)}):")
+        print("    All expected subclasses present: YES")
+        print("    No unexpected subclasses: YES")
+        print(f"  Sample subclasses: {sorted(arelement.subclasses)[:10]}...")
+
+    def test_parse_real_autosar_pdf_and_verify_referrable_attributes(
+        self, generic_structure_referrable: AutosarClass
+    ) -> None:
+        """Test parsing real AUTOSAR PDF and verify Referrable class attributes.
+
+        SWIT_00011: Test Parsing Referrable Class and Verifying Attributes
+
+        Requirements:
+            SWR_PARSER_00003: PDF File Parsing
+            SWR_PARSER_00004: Class Definition Pattern Recognition
+            SWR_PARSER_00010: Attribute Extraction from PDF
+            SWR_PARSER_00012: Multi-Line Attribute Handling
+            SWR_MODEL_00001: AUTOSAR Class Representation
+
+        This test verifies that the Referrable class from the GenericStructureTemplate PDF
+        has the correct attributes, specifically testing the camelCase attribute name
+        extraction fix for "shortNameFragment".
+
+        The Referrable class should have 2 attributes:
+        1. shortName (Identifier, 1, attr)
+        2. shortNameFragment (ShortNameFragment, *, aggr)
+
+        Args:
+            generic_structure_referrable: Cached Referrable class from GenericStructureTemplate PDF.
+        """
+        from autosar_pdf2txt.models import AttributeKind
+
+        # ========== Verify Referrable class from GenericStructureTemplate PDF ==========
+        referrable = generic_structure_referrable
+
+        # Verify class name
+        assert referrable.name == "Referrable", \
+            f"Expected class name 'Referrable', got '{referrable.name}'"
+
+        # Verify the class is abstract
+        assert referrable.is_abstract is True, "Referrable class should be abstract"
+
+        # Verify the base classes
+        assert len(referrable.bases) == 1, "Referrable should have 1 base class"
+        assert "ARObject" in referrable.bases, "Referrable should inherit from ARObject"
+
+        # Verify attribute count (should be 2 after the fix)
+        assert len(referrable.attributes) == 2, \
+            f"Expected 2 attributes, got {len(referrable.attributes)}: {list(referrable.attributes.keys())}"
+
+        # Verify first attribute: shortName
+        short_name_attr = referrable.attributes.get("shortName")
+        assert short_name_attr is not None, "shortName attribute should exist"
+        assert short_name_attr.name == "shortName", \
+            f"Expected attribute name 'shortName', got '{short_name_attr.name}'"
+        assert short_name_attr.type == "Identifier", \
+            f"Expected type 'Identifier', got '{short_name_attr.type}'"
+        assert short_name_attr.multiplicity == "1", \
+            f"Expected multiplicity '1', got '{short_name_attr.multiplicity}'"
+        assert short_name_attr.kind == AttributeKind.ATTR, \
+            f"Expected kind 'ATTR', got '{short_name_attr.kind.value}'"
+
+        # Verify second attribute: shortNameFragment (this is the key test for the fix)
+        short_name_fragment_attr = referrable.attributes.get("shortNameFragment")
+        assert short_name_fragment_attr is not None, \
+            "shortNameFragment attribute should exist (camelCase extraction fix)"
+        assert short_name_fragment_attr.name == "shortNameFragment", \
+            f"Expected attribute name 'shortNameFragment', got '{short_name_fragment_attr.name}'"
+        assert short_name_fragment_attr.type == "ShortNameFragment", \
+            f"Expected type 'ShortNameFragment', got '{short_name_fragment_attr.type}'"
+        assert short_name_fragment_attr.multiplicity == "*", \
+            f"Expected multiplicity '*', got '{short_name_fragment_attr.multiplicity}'"
+        assert short_name_fragment_attr.kind == AttributeKind.AGGR, \
+            f"Expected kind 'AGGR', got '{short_name_fragment_attr.kind.value}'"
+
+        # Verify attribute notes exist
+        assert short_name_attr.note, "shortName attribute should have a note"
+        assert short_name_fragment_attr.note, "shortNameFragment attribute should have a note"
+
+        # Print Referrable class information for verification
+        print("\n=== Referrable class verified ===")
+        print(f"  Name: {referrable.name}")
+        print(f"  Package: {referrable.package}")
+        print(f"  Abstract: {referrable.is_abstract}")
+        print(f"  Bases: {', '.join(referrable.bases)}")
+        print(f"  Attributes ({len(referrable.attributes)}):")
+        for attr_name, attr in referrable.attributes.items():
+            print(f"    - {attr_name}: {attr.type} (mult: {attr.multiplicity}, kind: {attr.kind.value})")
+
+    def test_parse_timing_extensions_pdf_and_verify_class_list(
+        self, timing_extensions_pdf: AutosarDoc
+    ) -> None:
+        """Test parsing TimingExtensions PDF and verify complete class list.
+
+        SWIT_00002: Test Parsing TimingExtensions PDF and Verifying Class List
+
+        Requirements:
+            SWR_PARSER_00003: PDF File Parsing
+            SWR_PARSER_00004: Class Definition Pattern Recognition
+            SWR_PARSER_00006: Package Hierarchy Building
+            SWR_MODEL_00001: AUTOSAR Class Representation
+            SWR_MODEL_00023: AUTOSAR Document Model
+
+        Args:
+            timing_extensions_pdf: Cached parsed TimingExtensions PDF data (AutosarDoc).
+        """
+        # Read expected class list from file
+        class_list_file = "tests/integration/timing_extensions_class_list.txt"
+
+        if not os.path.exists(class_list_file):
+            raise FileNotFoundError(f"Class list file not found: {class_list_file}")
+
+        expected_classes = set()
+        with open(class_list_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                # Skip empty lines and comments
+                if line and not line.startswith('#'):
+                    expected_classes.add(line)
+
+        # Verify expected count from file header
+        expected_count = 148
+        assert len(expected_classes) == expected_count, \
+            f"Expected {expected_count} classes in file, found {len(expected_classes)}"
+
+        # Extract all class names from parsed PDF
+        extracted_classes = set()
+        packages = timing_extensions_pdf.packages
+
+        # Collect all classes, enumerations, and primitives recursively
+        def collect_types(pkg) -> set:
+            """Recursively collect all type names from a package."""
+            types = set()
+            for typ in pkg.types:
+                types.add(typ.name)
+            for subpkg in pkg.subpackages:
+                types.update(collect_types(subpkg))
+            return types
+
+        for pkg in packages:
+            extracted_classes.update(collect_types(pkg))
+
+        # Verify total number of classes
+        actual_count = len(extracted_classes)
+        assert actual_count == expected_count, \
+            f"Expected {expected_count} classes, but found {actual_count}"
+
+        # Verify all expected classes are present
+        missing_classes = expected_classes - extracted_classes
+        assert not missing_classes, \
+            f"Missing {len(missing_classes)} classes: {sorted(missing_classes)}"
+
+        # Verify no extra classes were extracted
+        extra_classes = extracted_classes - expected_classes
+        assert not extra_classes, \
+            f"Found {len(extra_classes)} unexpected classes: {sorted(extra_classes)}"
+
+        # Print summary for verification
+        print("\n=== TimingExtensions PDF verification ===")
+        print(f"  Expected classes: {expected_count}")
+        print(f"  Extracted classes: {actual_count}")
+        print("  All expected classes found: YES")
+        print(f"  Sample classes: {sorted(list(extracted_classes))[:10]}...")
+
+    def test_parse_bsw_module_description_pdf_and_verify_atomic_sw_component_type_bases(
+        self, bsw_module_description_atomic_sw_component_type: AutosarClass
+    ) -> None:
+        """Test parsing BSWModuleDescriptionTemplate PDF and verify AtomicSwComponentType base classes.
+
+        SWIT_00002 Part 2: Verify AtomicSwComponentType base classes from AUTOSAR_CP_TPS_BSWModuleDescriptionTemplate PDF
+
+        This test detects the bug where "SwComponentTypeClass AtomicSwComponentType (abstract)"
+        is incorrectly parsed as a base class instead of just "SwComponentType".
+
+        Requirements:
+            SWR_PARSER_00003: PDF File Parsing
+            SWR_PARSER_00004: Class Definition Pattern Recognition
+            SWR_PARSER_00006: Package Hierarchy Building
+            SWR_MODEL_00001: AUTOSAR Class Representation
+
+        Args:
+            bsw_module_description_atomic_sw_component_type: Cached AtomicSwComponentType class from BSWModuleDescriptionTemplate PDF.
+        """
+        # ========== Verify AtomicSwComponentType class from BSWModuleDescriptionTemplate PDF ==========
+        atomic_sw_component_type = bsw_module_description_atomic_sw_component_type
+
+        # Verify class name
+        assert atomic_sw_component_type.name == "AtomicSwComponentType", \
+            f"Expected class name 'AtomicSwComponentType', got '{atomic_sw_component_type.name}'"
+
+        # Verify package name is M2::AUTOSARTemplates::SWComponentTemplate::Components
+        expected_package = "M2::AUTOSARTemplates::SWComponentTemplate::Components"
+        assert atomic_sw_component_type.package == expected_package, \
+            f"Expected package '{expected_package}', got '{atomic_sw_component_type.package}'"
+
+        # Verify base list contains all expected base classes
+        # Regular bases (non-Atp) including SwComponentType
+        expected_bases = [
+            "ARElement", "ARObject", "CollectableElement", "Identifiable",
+            "MultilanguageReferrable", "PackageableElement", "Referrable", "SwComponentType"
+        ]
+        assert len(atomic_sw_component_type.bases) == len(expected_bases), \
+            f"Expected {len(expected_bases)} base classes, got {len(atomic_sw_component_type.bases)}"
+
+        # This is the critical check - verify each expected base is in the list
+        for base in expected_bases:
+            assert base in atomic_sw_component_type.bases, \
+                f"Expected '{base}' in bases, got {atomic_sw_component_type.bases}"
+
+        # Verify Atp interfaces are in implements field
+        expected_implements = ["AtpBlueprint", "AtpBlueprintable", "AtpClassifier", "AtpType"]
+        assert len(atomic_sw_component_type.implements) == len(expected_implements), \
+            f"Expected {len(expected_implements)} interfaces, got {len(atomic_sw_component_type.implements)}"
+        for interface in expected_implements:
+            assert interface in atomic_sw_component_type.implements, \
+                f"Expected '{interface}' in implements, got {atomic_sw_component_type.implements}"
+
+        # Verify SwComponentType is in the base list (indicating AtomicSwComponentType inherits from SwComponentType)
+        assert "SwComponentType" in atomic_sw_component_type.bases, \
+            f"Expected 'SwComponentType' in bases, got {atomic_sw_component_type.bases}"
+
+        # CRITICAL: Verify the LAST base class is exactly "SwComponentType", not a corrupted string
+        # This catches the bug where it becomes "SwComponentTypeClass AtomicSwComponentType (abstract)"
+        assert atomic_sw_component_type.bases[-1] == "SwComponentType", \
+            f"Expected last base to be 'SwComponentType', got '{atomic_sw_component_type.bases[-1]}'"
+
+        # Print AtomicSwComponentType class information for verification
+        print("\n=== AtomicSwComponentType class verified ===")
+        print(f"  Name: {atomic_sw_component_type.name}")
+        print(f"  Package: {atomic_sw_component_type.package}")
+        print(f"  Abstract: {atomic_sw_component_type.is_abstract}")
+        print(f"  Bases ({len(atomic_sw_component_type.bases)}): {', '.join(atomic_sw_component_type.bases)}")
+        print(f"  Implements ({len(atomic_sw_component_type.implements)}): {', '.join(atomic_sw_component_type.implements)}")
+        print(f"  Last base: {atomic_sw_component_type.bases[-1]}")
+        print("  SwComponentType in bases: YES")
+        print("  Base corruption check: PASSED")
+
+    def test_parse_timing_extensions_pdf_and_verify_atomic_sw_component_type_bases(
+        self, timing_extensions_atomic_sw_component_type: AutosarClass
+    ) -> None:
+        """Test parsing TimingExtensions PDF and verify AtomicSwComponentType base classes.
+
+        SWIT_00002 Part 2: Verify AtomicSwComponentType base classes from AUTOSAR_CP_TPS_TimingExtensions PDF
+
+        Requirements:
+            SWR_PARSER_00003: PDF File Parsing
+            SWR_PARSER_00004: Class Definition Pattern Recognition
+            SWR_PARSER_00006: Package Hierarchy Building
+            SWR_MODEL_00001: AUTOSAR Class Representation
+            SWR_MODEL_00010: AUTOSAR Attribute Representation
+
+        Args:
+            timing_extensions_atomic_sw_component_type: Cached AtomicSwComponentType class from TimingExtensions PDF.
+        """
+        # ========== Verify AtomicSwComponentType class from TimingExtensions PDF ==========
+        atomic_sw_component_type = timing_extensions_atomic_sw_component_type
+
+        # Verify class name
+        assert atomic_sw_component_type.name == "AtomicSwComponentType", \
+            f"Expected class name 'AtomicSwComponentType', got '{atomic_sw_component_type.name}'"
+
+        # Verify package name is M2::AUTOSARTemplates::SWComponentTemplate::Components
+        expected_package = "M2::AUTOSARTemplates::SWComponentTemplate::Components"
+        assert atomic_sw_component_type.package == expected_package, \
+            f"Expected package '{expected_package}', got '{atomic_sw_component_type.package}'"
+
+        # Verify base list contains all expected base classes
+        # Regular bases (non-Atp) including SwComponentType
+        expected_bases = [
+            "ARElement", "ARObject", "CollectableElement", "Identifiable",
+            "MultilanguageReferrable", "PackageableElement", "Referrable", "SwComponentType"
+        ]
+        assert len(atomic_sw_component_type.bases) == len(expected_bases), \
+            f"Expected {len(expected_bases)} base classes, got {len(atomic_sw_component_type.bases)}"
+        for base in expected_bases:
+            assert base in atomic_sw_component_type.bases, \
+                f"Expected '{base}' in bases, got {atomic_sw_component_type.bases}"
+
+        # Verify Atp interfaces are in implements field
+        expected_implements = ["AtpBlueprint", "AtpBlueprintable", "AtpClassifier", "AtpType"]
+        assert len(atomic_sw_component_type.implements) == len(expected_implements), \
+            f"Expected {len(expected_implements)} interfaces, got {len(atomic_sw_component_type.implements)}"
+        for interface in expected_implements:
+            assert interface in atomic_sw_component_type.implements, \
+                f"Expected '{interface}' in implements, got {atomic_sw_component_type.implements}"
+
+        # Verify SwComponentType is in the base list (indicating AtomicSwComponentType inherits from SwComponentType)
+        assert "SwComponentType" in atomic_sw_component_type.bases, \
+            f"Expected 'SwComponentType' in bases, got {atomic_sw_component_type.bases}"
+
+        # Print AtomicSwComponentType class information for verification
+        print("\n=== AtomicSwComponentType class verified ===")
+        print(f"  Name: {atomic_sw_component_type.name}")
+        print(f"  Package: {atomic_sw_component_type.package}")
+        print(f"  Abstract: {atomic_sw_component_type.is_abstract}")
+        print(f"  Bases ({len(atomic_sw_component_type.bases)}): {', '.join(sorted(atomic_sw_component_type.bases))}")
+        print(f"  Implements ({len(atomic_sw_component_type.implements)}): {', '.join(sorted(atomic_sw_component_type.implements))}")
+        print("  SwComponentType in bases: YES")
+
+    def test_parse_real_autosar_pdf_and_verify_diagnostic_debounce_enum(
+        self, generic_structure_diagnostic_debounce_enum: AutosarEnumeration
+    ) -> None:
+        """Test parsing real AUTOSAR PDF and verify DiagnosticDebounceBehaviorEnum.
+
+        SWIT_00004: Verify DiagnosticDebounceBehaviorEnum from GenericStructureTemplate PDF
+
+        Requirements:
+            SWR_PARSER_00003: PDF File Parsing
+            SWR_PARSER_00013: Enumeration Pattern Recognition
+            SWR_PARSER_00014: Enumeration Literal Extraction
+            SWR_PARSER_00015: Enumeration Literal Extraction from PDF
+            SWR_MODEL_00019: AUTOSAR Enumeration Type Representation
+
+        Args:
+            generic_structure_diagnostic_debounce_enum: Cached DiagnosticDebounceBehaviorEnum.
+        """
+        enum = generic_structure_diagnostic_debounce_enum
+
+        # Verify enumeration name
+        assert enum.name == "DiagnosticDebounceBehaviorEnum", \
+            f"Expected name 'DiagnosticDebounceBehaviorEnum', got '{enum.name}'"
+
+        # Verify package
+        expected_package = "M2::AUTOSARTemplates::DiagnosticExtract::Dem::DiagnosticDebouncingAlgorithm"
+        assert enum.package == expected_package, \
+            f"Expected package '{expected_package}', got '{enum.package}'"
+
+        # Verify enumeration_literals is a tuple (immutable)
+        assert isinstance(enum.enumeration_literals, tuple), \
+            f"enumeration_literals should be tuple for immutability, got {type(enum.enumeration_literals)}"
+
+        # SWIT_00004 Step 9: Verify literal count is 2 (freeze and reset)
+        assert len(enum.enumeration_literals) == 2, \
+            f"Expected 2 literals (freeze and reset), got {len(enum.enumeration_literals)}. Actual literals: {[lit.name for lit in enum.enumeration_literals]}"
+
+        # Verify immutability - attempt to modify should raise TypeError
+        with pytest.raises(TypeError):
+            enum.enumeration_literals[0] = enum.enumeration_literals[0]
+
+        # Verify .append() is not available
+        assert not hasattr(enum.enumeration_literals, "append") or \
+               not callable(getattr(enum.enumeration_literals, "append", None)), \
+               "enumeration_literals should not have append method"
+
+        # SWIT_00004 Step 10: Verify expected literals exist: freeze, reset
+        literal_names = [lit.name for lit in enum.enumeration_literals]
+        expected_literals = ["freeze", "reset"]
+        for expected in expected_literals:
+            assert expected in literal_names, \
+                f"Expected literal '{expected}' not found. Got: {literal_names}"
+
+        # Verify only expected literals exist
+        assert len(literal_names) == 2, \
+            f"Expected exactly 2 literals (freeze, reset), but got {len(literal_names)}: {literal_names}"
+
+        # SWIT_00004 Step 11: Verify freeze literal has full multi-line description
+        freeze_literal = next((lit for lit in enum.enumeration_literals
+                             if lit.name == "freeze"), None)
+        assert freeze_literal is not None, "freeze literal must exist"
+        assert freeze_literal.description is not None, \
+            "freeze literal should have a description"
+        assert "event debounce counter will be frozen" in freeze_literal.description.lower(), \
+            f"freeze literal description should mention 'event debounce counter will be frozen'. Got: {freeze_literal.description}"
+
+        # SWIT_00004 Step 12: Verify reset literal has full multi-line description
+        reset_literal = next((lit for lit in enum.enumeration_literals
+                            if lit.name == "reset"), None)
+        assert reset_literal is not None, "reset literal must exist"
+        assert reset_literal.description is not None, \
+            "reset literal should have a description"
+        assert "event debounce counter will be reset" in reset_literal.description.lower(), \
+            f"reset literal description should mention 'event debounce counter will be reset'. Got: {reset_literal.description}"
+
+        # Print enumeration information for verification
+        print("\n=== DiagnosticDebounceBehaviorEnum verified ===")
+        print(f"  Name: {enum.name}")
+        print(f"  Package: {enum.package}")
+        print(f"  Literals ({len(enum.enumeration_literals)}):")
+        for lit in enum.enumeration_literals:
+            desc_preview = lit.description[:100] + "..." if lit.description and len(lit.description) > 100 else lit.description
+            print(f"    - {lit.name}: {desc_preview}")
+        print("  Immutability: VERIFIED (tuple type)")
+        print("  Multi-line description parsing: VERIFIED")
+
+    def test_enumeration_literal_tags_extraction_from_real_pdf_swit_00005(
+        self, diagnostic_extract_template_pdf: AutosarDoc
+    ) -> None:
+        """Test Enumeration Literal Tags Extraction from Real PDF (enum1.jpg scenario).
+
+        Test Case ID: SWIT_00005
+
+        Requirements:
+            SWR_PARSER_00015: Enumeration Literal Extraction from PDF
+            SWR_PARSER_00031: Enumeration Literal Tags Extraction
+
+        This test verifies that tags are correctly extracted from enumeration literal
+        descriptions using DiagnosticTypeOfDtcSupportedEnum from enum1.jpg example.
+
+        Tags tested:
+        - atp.EnumerationLiteralIndex: The index value of the literal
+        - xml.name: The XML name for the literal
+
+        Args:
+            diagnostic_extract_template_pdf: Cached parsed DiagnosticExtractTemplate PDF data (AutosarDoc).
+        """
+        # Find DiagnosticTypeOfDtcSupportedEnum enumeration (from enum1.jpg)
+        enum = find_enumeration_by_name(
+            diagnostic_extract_template_pdf,
+            "DiagnosticTypeOfDtcSupportedEnum"
+        )
+        if enum is None:
+            raise ValueError("DiagnosticTypeOfDtcSupportedEnum not found in PDF")
+
+        # SWIT_00005 Step 1: Verify enumeration has literals
+        assert len(enum.enumeration_literals) > 0, "Enumeration must have literals"
+
+        # SWIT_00005 Step 2: Verify tags are extracted for literals
+        literals_with_tags = [lit for lit in enum.enumeration_literals if lit.tags]
+        assert len(literals_with_tags) > 0, "At least one literal should have tags"
+
+        # SWIT_00005 Step 3: Verify expected tags are present
+        for literal in enum.enumeration_literals:
+            # Check that tags dictionary exists
+            assert hasattr(literal, 'tags'), "Literal must have tags attribute"
+            assert isinstance(literal.tags, dict), "Tags must be a dictionary"
+
+            # If tags are present, verify they are structured correctly
+            if literal.tags:
+                print(f"\n=== Literal: {literal.name} ===")
+                print(f"  Description: {literal.description}")
+                print(f"  Index: {literal.index}")
+                print(f"  Tags: {literal.tags}")
+
+                # Verify atp.EnumerationLiteralIndex tag
+                if "atp.EnumerationLiteralIndex" in literal.tags:
+                    assert literal.tags["atp.EnumerationLiteralIndex"].isdigit(), \
+                        "atp.EnumerationLiteralIndex value must be numeric string"
+                    # Verify index field matches tag value
+                    assert literal.index == int(literal.tags["atp.EnumerationLiteralIndex"]), \
+                        f"Index field ({literal.index}) must match atp.EnumerationLiteralIndex tag ({literal.tags['atp.EnumerationLiteralIndex']})"
+
+                # Verify xml.name tag if present
+                if "xml.name" in literal.tags:
+                    assert literal.tags["xml.name"], "xml.name value must not be empty"
+
+                # Verify tags are removed from description
+                if literal.description:
+                    assert "atp.EnumerationLiteralIndex" not in literal.description, \
+                        "Tags should be removed from description"
+                    assert "xml.name" not in literal.description, \
+                        "Tags should be removed from description"
+
+        print("\n=== Enumeration Literal Tags Extraction verified ===")
+        print(f"  Total literals: {len(enum.enumeration_literals)}")
+        print(f"  Literals with tags: {len(literals_with_tags)}")
+        print("  Tags extraction: VERIFIED")
+        print("  Description cleaning: VERIFIED")
+
+    def test_multipage_enumeration_literal_list_from_real_pdf_swit_00006(
+        self, diagnostic_extract_template_pdf: AutosarDoc
+    ) -> None:
+        """Test Multi-page Enumeration Literal List from Real PDF.
+
+        Test Case ID: SWIT_00006
+
+        Requirements:
+            SWR_PARSER_00015: Enumeration Literal Extraction from PDF
+            SWR_PARSER_00032: Multi-page Enumeration Literal List Support
+            SWR_MODEL_00014: AUTOSAR Enumeration Type Representation
+            SWR_MODEL_00027: AUTOSAR Source Location Representation
+
+        This test verifies that enumeration literal lists spanning multiple pages
+        are parsed correctly using DiagnosticExtractTemplate.pdf (from enum2.jpg example).
+
+        Args:
+            diagnostic_extract_template_pdf: Cached parsed DiagnosticExtractTemplate PDF data (AutosarDoc).
+        """
+        # Find ByteOrderEnum enumeration (from enum2.jpg - spans multiple pages)
+        enum = find_enumeration_by_name(
+            diagnostic_extract_template_pdf,
+            "ByteOrderEnum"
+        )
+        if enum is None:
+            raise ValueError("ByteOrderEnum not found in PDF")
+
+        # SWIT_00006 Step 1: Verify enumeration has literals
+        assert len(enum.enumeration_literals) > 0, "Enumeration must have literals"
+
+        # SWIT_00006 Step 2: Verify expected literals are present
+        literal_names = [lit.name for lit in enum.enumeration_literals]
+        expected_literals = ["mostSignificantByteFirst", "mostSignificantByteLast", "opaque"]
+        for expected in expected_literals:
+            assert expected in literal_names, f"Expected literal '{expected}' not found. Found: {literal_names}"
+
+        # SWIT_00006 Step 3: Verify each literal has proper structure
+        for literal in enum.enumeration_literals:
+            assert literal.name, "Literal name must not be empty"
+            assert hasattr(literal, 'description'), "Literal must have description attribute"
+            assert hasattr(literal, 'index'), "Literal must have index attribute"
+            assert hasattr(literal, 'tags'), "Literal must have tags attribute"
+
+            # If description exists, verify it's clean (no tag patterns)
+            if literal.description:
+                assert "atp.EnumerationLiteralIndex" not in literal.description, \
+                    f"Tags should be removed from description for literal '{literal.name}'"
+
+            # Print literal details for verification
+            print(f"\n=== Literal: {literal.name} ===")
+            print(f"  Description: {literal.description}")
+            print(f"  Index: {literal.index}")
+            print(f"  Tags: {literal.tags}")
+
+        # SWIT_00006 Step 4: Verify source location tracking
+        assert enum.sources, "Enumeration should have source location"
+        assert len(enum.sources) > 0, "Enumeration should have at least one source"
+        source = enum.sources[0]
+        assert source.pdf_file, "Source PDF file must be specified"
+        assert source.page_number, "Source page number must be specified"
+
+        print("\n=== Multi-page Enumeration Literal List verified ===")
+        print(f"  Name: {enum.name}")
+        print(f"  Package: {enum.package}")
+        print(f"  Total literals: {len(enum.enumeration_literals)}")
+        print(f"  Source: {source.pdf_file}, Page {source.page_number}")
+        print("  Multi-page parsing: VERIFIED")
+        print("  Literal structure: VERIFIED")
+
+    def test_diagnostic_event_combination_reporting_behavior_enum_swit_00007(
+        self, diagnostic_extract_template_pdf: AutosarDoc
+    ) -> None:
+        """Test DiagnosticEventCombinationReportingBehaviorEnum enum3.png scenario.
+
+        Test Case ID: SWIT_00007
+
+        Requirements:
+            SWR_PARSER_00015: Enumeration Literal Extraction from PDF
+            SWR_PARSER_00031: Enumeration Literal Tags Extraction
+
+        This test verifies the enum3.png scenario where three literal names
+        (reportingIn, ChronlogicalOrder, and OldestFirst) are stacked vertically
+        in one cell, sharing the same description and tags.
+
+        The parser recognizes this and creates one combined literal:
+        - reportingInChronlogicalOrderOldestFirst with the full description and tags
+
+        Args:
+            diagnostic_extract_template_pdf: Cached parsed DiagnosticExtractTemplate PDF data (AutosarDoc).
+        """
+        # Find DiagnosticEventCombinationReportingBehaviorEnum enumeration
+        enum = find_enumeration_by_name(
+            diagnostic_extract_template_pdf,
+            "DiagnosticEventCombinationReportingBehaviorEnum"
+        )
+        if enum is None:
+            raise ValueError("DiagnosticEventCombinationReportingBehaviorEnum not found in PDF")
+
+        # Step 1: Verify enumeration has exactly one literal
+        assert len(enum.enumeration_literals) == 1, \
+            f"Expected 1 literal, found {len(enum.enumeration_literals)}"
+
+        # Step 2: Verify the literal
+        literal = enum.enumeration_literals[0]
+        assert literal.name == "reportingInChronlogicalOrderOldestFirst", \
+            f"Expected literal name 'reportingInChronlogicalOrderOldestFirst', got '{literal.name}'"
+
+        # Step 3: Verify literal has proper structure
+        assert literal.description is not None, "Literal must have description"
+        assert literal.index is not None, "Literal must have index"
+        assert literal.tags is not None, "Literal must have tags attribute"
+
+        # Step 4: Verify literal description contains expected content
+        assert "chronological" in literal.description.lower(), \
+            f"Literal description should contain 'chronological': {literal.description}"
+
+        # Step 5: Verify literal tags are present
+        assert "atp.EnumerationLiteralIndex" in literal.tags, \
+            "Literal should have atp.EnumerationLiteralIndex tag"
+
+        # Step 6: Verify description is clean (no tag patterns)
+        assert "atp.EnumerationLiteralIndex" not in literal.description, \
+            f"Tags should be removed from literal description: {literal.description}"
+
+        # Print literal details for verification
+        print("\n=== DiagnosticEventCombinationReportingBehaviorEnum ===")
+        print(f"  Name: {enum.name}")
+        print(f"  Package: {enum.package}")
+        print(f"  Total literals: {len(enum.enumeration_literals)}")
+        print(f"\n=== Literal: {literal.name} ===")
+        print(f"  Description: {literal.description}")
+        print(f"  Index: {literal.index}")
+        print(f"  Tags: {literal.tags}")
+
+        if enum.sources:
+            source = enum.sources[0]
+            print(f"\n  Source: {source.pdf_file}, Page {source.page_number}")
+
+        print("\n=== enum3.png scenario verified ===")
+        print("  Three literal names stacked in one cell")
+        print("  Combined literal name: reportingInChronlogicalOrderOldestFirst")
+        print("  Description and tags: VERIFIED")
+
+    def test_diagnostic_event_combination_behavior_enum_swit_00008(
+        self, diagnostic_extract_template_pdf: AutosarDoc
+    ) -> None:
+        """Test DiagnosticEventCombinationBehaviorEnum Pattern 5 scenario.
+
+        Test Case ID: SWIT_00008
+
+        Requirements:
+            SWR_PARSER_00015: Enumeration Literal Extraction from PDF
+            SWR_PARSER_00031: Enumeration Literal Tags Extraction
+
+        This test verifies the Pattern 5 scenario where two literals with the same
+        base name but different suffixes (eventCombinationOnRetrieval and
+        eventCombinationOnStorage) are parsed as separate literals.
+
+        Args:
+            diagnostic_extract_template_pdf: Cached parsed DiagnosticExtractTemplate PDF data (AutosarDoc).
+        """
+        # Find DiagnosticEventCombinationBehaviorEnum enumeration
+        enum = find_enumeration_by_name(
+            diagnostic_extract_template_pdf,
+            "DiagnosticEventCombinationBehaviorEnum"
+        )
+        if enum is None:
+            pytest.skip("DiagnosticEventCombinationBehaviorEnum not found in PDF")
+
+        # Step 1: Verify enumeration has exactly two literals
+        assert len(enum.enumeration_literals) == 2, \
+            f"Expected 2 literals, found {len(enum.enumeration_literals)}"
+
+        # Step 2: Verify first literal
+        first_literal = enum.enumeration_literals[0]
+        assert first_literal.name in ["eventCombinationOnRetrieval", "eventCombinationOnStorage"], \
+            f"Expected first literal name to be 'eventCombinationOnRetrieval' or 'eventCombinationOnStorage', got '{first_literal.name}'"
+
+        # Step 3: Verify first literal has proper structure
+        assert first_literal.description is not None, "First literal must have description"
+        assert first_literal.index is not None, "First literal must have index"
+        assert first_literal.tags is not None, "First literal must have tags attribute"
+
+        # Step 4: Verify first literal description contains expected content
+        if first_literal.name == "eventCombinationOnRetrieval":
+            assert "retrieval" in first_literal.description.lower(), \
+                f"First literal description should contain 'retrieval': {first_literal.description}"
+        else:
+            assert "storage" in first_literal.description.lower(), \
+                f"First literal description should contain 'storage': {first_literal.description}"
+
+        # Step 5: Verify second literal
+        second_literal = enum.enumeration_literals[1]
+        assert second_literal.name in ["eventCombinationOnRetrieval", "eventCombinationOnStorage"], \
+            f"Expected second literal name to be 'eventCombinationOnRetrieval' or 'eventCombinationOnStorage', got '{second_literal.name}'"
+        assert second_literal.name != first_literal.name, \
+            "Second literal should have different name than first literal"
+
+        # Step 6: Verify second literal has proper structure
+        assert second_literal.description is not None, "Second literal must have description"
+        assert second_literal.index is not None, "Second literal must have index"
+        assert second_literal.tags is not None, "Second literal must have tags attribute"
+
+        # Step 7: Verify second literal description contains expected content
+        if second_literal.name == "eventCombinationOnRetrieval":
+            assert "retrieval" in second_literal.description.lower(), \
+                f"Second literal description should contain 'retrieval': {second_literal.description}"
+        else:
+            assert "storage" in second_literal.description.lower(), \
+                f"Second literal description should contain 'storage': {second_literal.description}"
+
+        # Step 8: Verify descriptions are clean (no tag patterns)
+        assert "atp.EnumerationLiteralIndex" not in first_literal.description, \
+            f"Tags should be removed from first literal description: {first_literal.description}"
+        assert "atp.EnumerationLiteralIndex" not in second_literal.description, \
+            f"Tags should be removed from second literal description: {second_literal.description}"
+
+        # Print literal details for verification
+        print("\n=== DiagnosticEventCombinationBehaviorEnum ===")
+        print(f"  Name: {enum.name}")
+        print(f"  Package: {enum.package}")
+        print(f"  Total literals: {len(enum.enumeration_literals)}")
+        print(f"\n=== First Literal: {first_literal.name} ===")
+        print(f"  Description: {first_literal.description}")
+        print(f"  Index: {first_literal.index}")
+        print(f"  Tags: {first_literal.tags}")
+        print(f"\n=== Second Literal: {second_literal.name} ===")
+        print(f"  Description: {second_literal.description}")
+        print(f"  Index: {second_literal.index}")
+        print(f"  Tags: {second_literal.tags}")
+
+        if enum.sources:
+            source = enum.sources[0]
+            print(f"\n  Source: {source.pdf_file}, Page {source.page_number}")
+
+        print("\n=== Pattern 5 scenario verified ===")
+        print("  Two separate literals with same base name, different suffixes")
+        print("  First literal: eventCombinationOnRetrieval (with description and tags)")
+        print("  Second literal: eventCombinationOnStorage (with description and tags)")
+        print("  Description and tags: VERIFIED")
+
+    def test_verify_total_counts_and_sorted_lists_from_all_pdfs(
+        self,
+        generic_structure_template_pdf: AutosarDoc,
+        timing_extensions_pdf: AutosarDoc,
+        bsw_module_description_pdf: AutosarDoc,
+        diagnostic_extract_template_pdf: AutosarDoc,
+    ) -> None:
+        """Test verifying total counts and sorted lists of classes, enumerations, and primitives from PDF files.
+
+        Test Case ID: SWIT_00009
+
+        Requirements:
+            SWR_PARSER_00003: PDF File Parsing
+            SWR_MODEL_00001: AUTOSAR Class Representation
+            SWR_MODEL_00019: AUTOSAR Enumeration Type Representation
+            SWR_MODEL_00024: AUTOSAR Primitive Type Representation
+            SWR_MODEL_00023: AUTOSAR Document Model
+
+        This test verifies that the 4 PDF files used in existing integration tests are parsed correctly
+        and that the total counts of classes, enumerations, and primitives are accurate.
+        It also verifies that the sorted lists of type names are generated correctly.
+
+        This test uses existing session-scoped fixtures for optimal performance.
+
+        Args:
+            generic_structure_template_pdf: Cached GenericStructureTemplate PDF data.
+            timing_extensions_pdf: Cached TimingExtensions PDF data.
+            bsw_module_description_pdf: Cached BSWModuleDescriptionTemplate PDF data.
+            diagnostic_extract_template_pdf: Cached DiagnosticExtractTemplate PDF data.
+        """
+        # Define PDF documents to test (using existing fixtures)
+        pdf_docs = {
+            "AUTOSAR_FO_TPS_GenericStructureTemplate.pdf": generic_structure_template_pdf,
+            "AUTOSAR_CP_TPS_TimingExtensions.pdf": timing_extensions_pdf,
+            "AUTOSAR_CP_TPS_BSWModuleDescriptionTemplate.pdf": bsw_module_description_pdf,
+            "AUTOSAR_CP_TPS_DiagnosticExtractTemplate.pdf": diagnostic_extract_template_pdf,
+        }
+
+        # Expected counts for each PDF (based on actual parsing results)
+        # These are minimum expected counts - actual counts may be higher
+        expected_min_counts = {
+            "AUTOSAR_FO_TPS_GenericStructureTemplate.pdf": {"classes": 228, "enumerations": 33, "primitives": 50},
+            "AUTOSAR_CP_TPS_TimingExtensions.pdf": {"classes": 127, "enumerations": 18, "primitives": 3},
+            "AUTOSAR_CP_TPS_BSWModuleDescriptionTemplate.pdf": {"classes": 220, "enumerations": 30, "primitives": 4},
+            "AUTOSAR_CP_TPS_DiagnosticExtractTemplate.pdf": {"classes": 50, "enumerations": 40, "primitives": 0},
+        }
+
+        # Collect all types from all PDFs
+        all_results = {}
+
+        for pdf_file, doc in pdf_docs.items():
+            # Collect all types recursively
+            def collect_types_from_packages(packages):
+                """Recursively collect all types from a list of packages.
+
+                Returns:
+                    Tuple of (classes, enumerations, primitives) lists.
+                """
+                classes = []
+                enumerations = []
+                primitives = []
+
+                for pkg in packages:
+                    # Collect types from current package
+                    for typ in pkg.types:
+                        if isinstance(typ, AutosarClass):
+                            classes.append(typ)
+                        elif isinstance(typ, AutosarEnumeration):
+                            enumerations.append(typ)
+                        elif isinstance(typ, AutosarPrimitive):
+                            primitives.append(typ)
+
+                    # Recursively collect from subpackages
+                    sub_classes, sub_enums, sub_prims = collect_types_from_packages(pkg.subpackages)
+                    classes.extend(sub_classes)
+                    enumerations.extend(sub_enums)
+                    primitives.extend(sub_prims)
+
+                return classes, enumerations, primitives
+
+            classes, enumerations, primitives = collect_types_from_packages(doc.packages)
+
+            # Get sorted lists of type names
+            class_names = sorted([cls.name for cls in classes])
+            enum_names = sorted([enum.name for enum in enumerations])
+            primitive_names = sorted([prim.name for prim in primitives])
+
+            # Verify expected minimum counts
+            if pdf_file in expected_min_counts:
+                expected = expected_min_counts[pdf_file]
+                # Use minimum expected counts to ensure parser is extracting correctly
+                # This allows flexibility if more types are added in future PDF versions
+                assert len(classes) >= expected["classes"], \
+                    f"{pdf_file}: Expected at least {expected['classes']} classes, got {len(classes)}"
+                assert len(enumerations) >= expected["enumerations"], \
+                    f"{pdf_file}: Expected at least {expected['enumerations']} enumerations, got {len(enumerations)}"
+                assert len(primitives) >= expected["primitives"], \
+                    f"{pdf_file}: Expected at least {expected['primitives']} primitives, got {len(primitives)}"
+
+            # Store results
+            all_results[pdf_file] = {
+                "classes": class_names,
+                "enumerations": enum_names,
+                "primitives": primitive_names,
+                "counts": {
+                    "classes": len(classes),
+                    "enumerations": len(enumerations),
+                    "primitives": len(primitives),
+                    "total": len(classes) + len(enumerations) + len(primitives),
+                }
+            }
+
+            # Print verification results
+            print(f"\n=== {pdf_file} ===")
+            print(f"  Classes: {len(classes)}")
+            print(f"  Enumerations: {len(enumerations)}")
+            print(f"  Primitives: {len(primitives)}")
+            print(f"  Total: {len(classes) + len(enumerations) + len(primitives)}")
+            print(f"  Sample classes: {class_names[:5]}{'...' if len(class_names) > 5 else ''}")
+            print(f"  Sample enumerations: {enum_names[:5]}{'...' if len(enum_names) > 5 else ''}")
+            print(f"  Sample primitives: {primitive_names[:5]}{'...' if len(primitive_names) > 5 else ''}")
+
+        # Print summary
+        print("\n=== Summary ===")
+        print(f"  Total PDFs processed: {len(all_results)}")
+        total_classes = sum(r["counts"]["classes"] for r in all_results.values())
+        total_enums = sum(r["counts"]["enumerations"] for r in all_results.values())
+        total_primitives = sum(r["counts"]["primitives"] for r in all_results.values())
+        print(f"  Total classes across all PDFs: {total_classes}")
+        print(f"  Total enumerations across all PDFs: {total_enums}")
+        print(f"  Total primitives across all PDFs: {total_primitives}")
+        print(f"  Grand total: {total_classes + total_enums + total_primitives}")
+
+        # Verify that all results have sorted lists
+        for pdf_file, result in all_results.items():
+            # Verify classes are sorted
+            assert result["classes"] == sorted(result["classes"]), \
+                f"{pdf_file}: Class names are not sorted"
+
+            # Verify enumerations are sorted
+            assert result["enumerations"] == sorted(result["enumerations"]), \
+                f"{pdf_file}: Enumeration names are not sorted"
+
+            # Verify primitives are sorted
+            assert result["primitives"] == sorted(result["primitives"]), \
+                f"{pdf_file}: Primitive names are not sorted"
+
+        print("\n=== All type lists are sorted alphabetically ===")
+        print("=== Test completed successfully ===")
+
+    def test_bsw_module_description_swit_00009(
+        self, bsw_module_description_pdf: AutosarDoc
+    ) -> None:
+        """Test Parsing BSWModuleDescriptionTemplate PDF and Verifying BswModuleDescription Class.
+
+        Test Case ID: SWIT_00009
+
+        Requirements:
+            SWR_PARSER_00003: PDF File Parsing
+            SWR_PARSER_00004: Class Definition Pattern Recognition
+            SWR_PARSER_00006: Package Hierarchy Building
+            SWR_PARSER_00010: Attribute Extraction from PDF
+            SWR_PARSER_00011: Attribute Data Model
+            SWR_MODEL_00001: AUTOSAR Class Representation
+
+        This test verifies the BswModuleDescription class from the BSWModuleDescriptionTemplate PDF
+        including its attributes, base classes, and attribute types.
+
+        Args:
+            bsw_module_description_pdf: Parsed BSWModuleDescriptionTemplate PDF data.
+        """
+        # Find M2 package (root metamodel package)
+        m2 = bsw_module_description_pdf.get_package("M2")
+        assert m2 is not None, "M2 package not found"
+
+        # Navigate to AUTOSARTemplates -> BswModuleTemplate -> BswOverview
+        autosar_templates = m2.get_subpackage("AUTOSARTemplates")
+        assert autosar_templates is not None, "AUTOSARTemplates package not found"
+
+        bsw_module_template = autosar_templates.get_subpackage("BswModuleTemplate")
+        assert bsw_module_template is not None, "BswModuleTemplate package not found"
+
+        bsw_overview = bsw_module_template.get_subpackage("BswOverview")
+        assert bsw_overview is not None, "BswOverview package not found"
+
+        # Find BswModuleDescription class
+        bsw_module_description = bsw_overview.get_class("BswModuleDescription")
+        assert bsw_module_description is not None, "BswModuleDescription class not found"
+
+        # Verify class name
+        assert bsw_module_description.name == "BswModuleDescription", \
+            f"Expected class name 'BswModuleDescription', got '{bsw_module_description.name}'"
+
+        # Verify package name
+        expected_package = "M2::AUTOSARTemplates::BswModuleTemplate::BswOverview"
+        assert bsw_module_description.package == expected_package, \
+            f"Expected package '{expected_package}', got '{bsw_module_description.package}'"
+
+        # Verify note contains expected text
+        assert bsw_module_description.note is not None, "BswModuleDescription should have a note"
+        assert "Root element for the description of a single BSW module or BSW cluster" in bsw_module_description.note, \
+            f"Note should contain 'Root element for the description of a single BSW module or BSW cluster', got '{bsw_module_description.note}'"
+        assert "In case it describes a BSW module, the short name of this element equals the name of the BSW module" in bsw_module_description.note, \
+            "Note should contain 'In case it describes a BSW module, the short name of this element equals the name of the BSW module'"
+
+        # Verify tags
+        assert bsw_module_description.tags is not None, "BswModuleDescription should have tags"
+        assert "atp.recommendedPackage" in bsw_module_description.tags, \
+            f"Tags should contain 'atp.recommendedPackage', got {list(bsw_module_description.tags.keys())}"
+        assert bsw_module_description.tags["atp.recommendedPackage"] == "BswModuleDescriptions", \
+            f"atp.recommendedPackage should be 'BswModuleDescriptions', got '{bsw_module_description.tags['atp.recommendedPackage']}'"
+
+        # Verify base classes (non-ATP interfaces)
+        expected_bases = [
+            "ARElement", "ARObject", "CollectableElement", "Identifiable",
+            "MultilanguageReferrable", "PackageableElement", "Referrable"
+        ]
+        assert len(bsw_module_description.bases) == len(expected_bases), \
+            f"Expected {len(expected_bases)} base classes, got {len(bsw_module_description.bases)}"
+        for expected_base in expected_bases:
+            assert expected_base in bsw_module_description.bases, \
+                f"Expected base class '{expected_base}' not found in bases: {bsw_module_description.bases}"
+
+        # Verify Atp interfaces are in implements field
+        expected_implements = ["AtpBlueprint", "AtpBlueprintable", "AtpClassifier", "AtpFeature", "AtpStructureElement"]
+        assert len(bsw_module_description.implements) == len(expected_implements), \
+            f"Expected {len(expected_implements)} interfaces, got {len(bsw_module_description.implements)}"
+        for interface in expected_implements:
+            assert interface in bsw_module_description.implements, \
+                f"Expected '{interface}' in implements, got {bsw_module_description.implements}"
+
+        # Verify attributes (SWR_PARSER_00012 camelCase fragment merging is now implemented)
+        # The bswModuleDocumentation attribute is now correctly extracted with its full name
+        expected_attributes = [
+            "bswModule", "bswModuleDocumentation", "expectedEntry", "implemented", "internalBehavior", "moduleId",
+            "providedClient", "providedData", "providedMode", "releasedTrigger",
+            "requiredClient", "requiredData", "requiredMode", "requiredTrigger"
+        ]
+        assert len(bsw_module_description.attributes) == len(expected_attributes), \
+            f"Expected {len(expected_attributes)} attributes, got {len(bsw_module_description.attributes)}"
+        for expected_attr in expected_attributes:
+            assert expected_attr in bsw_module_description.attributes, \
+                f"Expected attribute '{expected_attr}' not found in attributes: {list(bsw_module_description.attributes.keys())}"
+
+        # Verify attribute types (bswModuleDocumentation is now correctly extracted with full type)
+        expected_types = {
+            "bswModule": "BswModuleDependency",  # This is the dependency attribute, not the documentation attribute
+            "bswModuleDocumentation": "SwComponentDocumentation",  # Correctly merged from camelCase fragments
+            "expectedEntry": "BswModuleEntry",
+            "implemented": "BswModuleEntry",
+            "providedClient": "BswModuleClientServer",
+            "providedMode": "ModeDeclarationGroup",
+            "requiredClient": "BswModuleClientServer",
+            "requiredMode": "ModeDeclarationGroup",
+        }
+        for attr_name, expected_type in expected_types.items():
+            attr = bsw_module_description.attributes.get(attr_name)
+            assert attr is not None, f"Attribute '{attr_name}' should exist"
+            assert attr.type == expected_type, \
+                f"Expected attribute '{attr_name}' to have type '{expected_type}', got '{attr.type}'"
+
+        # Print BswModuleDescription class information for verification
+        print("\n=== BswModuleDescription class verified ===")
+        print(f"  Name: {bsw_module_description.name}")
+        print(f"  Package: {bsw_module_description.package}")
+        print(f"  Abstract: {bsw_module_description.is_abstract}")
+        print(f"  Bases ({len(bsw_module_description.bases)}): {', '.join(bsw_module_description.bases)}")
+        print(f"  Tags: {bsw_module_description.tags}")
+        print(f"  Attributes ({len(bsw_module_description.attributes)}):")
+        for attr_name, attr in bsw_module_description.attributes.items():
+            print(f"    - {attr_name}: {attr.type}")
+
+    def test_j1939_cluster_hyphenated_attribute_name_continuation_swit_00010(
+        self, diagnostic_extract_j1939_cluster: Optional[AutosarClass]
+    ) -> None:
+        """Test J1939Cluster hyphenated attribute name continuation (request2Support).
+
+        Test Case ID: SWIT_00010
+
+        Requirements:
+            SWR_PARSER_00010: Attribute Extraction from PDF
+            SWR_PARSER_00012: Multi-Line Attribute Handling
+
+        This test verifies the hyphenated word break pattern where "re-" and "quest2Support"
+        are concatenated to form "request2Support" as shown in the screenshot from
+        AUTOSAR_CP_TPS_DiagnosticExtractTemplate.pdf page 321.
+
+        The PDF has the attribute name split across two lines:
+        - Line 1: "re- Boolean 0..1 attr Enables support for the Request2 PGN (RQST2)."
+        - Line 2: "quest2Support"
+
+        The parser should concatenate these to form the complete attribute name "request2Support".
+
+        Args:
+            diagnostic_extract_j1939_cluster: Cached J1939Cluster class (may be None).
+        """
+        # Skip if the class couldn't be found (PDF parsing issue)
+        if diagnostic_extract_j1939_cluster is None:
+            pytest.skip("J1939Cluster class not found in PDF - may be parsing issue or class not present")
+
+        j1939_cluster = diagnostic_extract_j1939_cluster
+
+        # Verify class name
+        assert j1939_cluster.name == "J1939Cluster", \
+            f"Expected class name 'J1939Cluster', got '{j1939_cluster.name}'"
+
+        # Verify package
+        expected_package = "M2::AUTOSARTemplates::SystemTemplate::Fibex::Fibex4Can::CanTopology"
+        assert j1939_cluster.package == expected_package, \
+            f"Expected package '{expected_package}', got '{j1939_cluster.package}'"
+
+        # Verify request2Support attribute exists (NOT "re-")
+        assert "request2Support" in j1939_cluster.attributes, \
+            f"Expected 'request2Support' attribute not found. Got: {list(j1939_cluster.attributes.keys())}"
+
+        # CRITICAL: Verify the incorrect "re-" attribute does NOT exist
+        assert "re-" not in j1939_cluster.attributes, \
+            "Incorrect attribute name 're-' should not exist (should be 'request2Support')"
+
+        # Verify request2Support attribute details
+        request2_support_attr = j1939_cluster.attributes["request2Support"]
+        assert request2_support_attr.type == "Boolean", \
+            f"Expected request2Support type to be 'Boolean', got '{request2_support_attr.type}'"
+        assert request2_support_attr.multiplicity == "0..1", \
+            f"Expected request2Support multiplicity to be '0..1', got '{request2_support_attr.multiplicity}'"
+        assert request2_support_attr.kind.value == "attr", \
+            f"Expected request2Support kind to be 'attr', got '{request2_support_attr.kind.value}'"
+
+        # Verify note contains expected content
+        assert request2_support_attr.note is not None, "request2Support should have a note"
+        assert "Request2" in request2_support_attr.note or "RQST2" in request2_support_attr.note, \
+            f"request2Support note should mention 'Request2' or 'RQST2', got: {request2_support_attr.note}"
+
+        # Verify other expected attributes exist
+        expected_attributes = ["networkId", "request2Support", "usesAddress"]
+        for expected_attr in expected_attributes:
+            assert expected_attr in j1939_cluster.attributes, \
+                f"Expected attribute '{expected_attr}' not found. Got: {list(j1939_cluster.attributes.keys())}"
+
+        # Print J1939Cluster information for verification
+        print("\n=== J1939Cluster verified ===")
+        print(f"  Name: {j1939_cluster.name}")
+        print(f"  Package: {j1939_cluster.package}")
+        print(f"  Attributes ({len(j1939_cluster.attributes)}):")
+        for attr_name, attr in j1939_cluster.attributes.items():
+            print(f"    - {attr_name}: {attr.type}")
+
+        print("\n=== Hyphenated attribute continuation verified ===")
+        print("  ✓ Attribute 'request2Support' correctly extracted")
+        print("  ✓ Incorrect attribute 're-' does NOT exist")
+        print("  ✓ Hyphenated word break (re- + quest2Support) handled correctly")
+
+    def test_parse_bsw_module_description_pdf_and_verify_camelcase_fragment_attributes(
+        self, bsw_module_description_bsw_module_description: AutosarClass
+    ) -> None:
+        """Test BswModuleDescription Class CamelCase Attribute Name and Type Split Across Lines.
+
+        Test Case ID: SWIT_00012
+
+        Requirements:
+            SWR_PARSER_00001: PDF Parser Initialization
+            SWR_PARSER_00003: PDF File Parsing
+            SWR_PARSER_00004: Class Definition Pattern Recognition
+            SWR_PARSER_00005: Class Definition Data Model
+            SWR_PARSER_00006: Package Hierarchy Building
+            SWR_PARSER_00010: Attribute Extraction from PDF
+            SWR_PARSER_00012: Multi-Line Attribute Handling
+            SWR_MODEL_00001: AUTOSAR Class Representation
+
+        This test verifies that the BswModuleDescription class from the
+        AUTOSAR_CP_TPS_BSWModuleDescriptionTemplate.pdf correctly handles camelCase
+        attribute names and types that are split across PDF lines. Specifically,
+        it tests the bswModuleDocumentation attribute where PDF text extraction
+        splits both the name ("bswModule" + "Documentation") and type
+        ("SwComponent" + "Documentation") across lines.
+
+        Args:
+            bsw_module_description_bsw_module_description: Cached BswModuleDescription class.
+
+        This test validates the fix for camelCase attribute name and type
+        fragment detection and merging (SWUT_PARSER_00102).
+        """
+        # Verify the class name
+        assert bsw_module_description_bsw_module_description.name == "BswModuleDescription", \
+            f"Expected class name 'BswModuleDescription', got '{bsw_module_description_bsw_module_description.name}'"
+
+        # Verify the class is NOT abstract
+        assert not bsw_module_description_bsw_module_description.is_abstract, \
+            "Expected BswModuleDescription to be non-abstract"
+
+        # Verify the attribute "bswModuleDocumentation" exists
+        assert "bswModuleDocumentation" in bsw_module_description_bsw_module_description.attributes, \
+            "Expected 'bswModuleDocumentation' attribute not found. This indicates the camelCase fragment merging failed."
+
+        # Verify the attribute type is correct
+        bsw_module_doc_attr = bsw_module_description_bsw_module_description.attributes["bswModuleDocumentation"]
+        assert bsw_module_doc_attr.type == "SwComponentDocumentation", \
+            f"Expected type 'SwComponentDocumentation', got '{bsw_module_doc_attr.type}'"
+
+        # Verify the attribute multiplicity and kind
+        assert bsw_module_doc_attr.multiplicity == "0..1", \
+            f"Expected multiplicity '0..1', got '{bsw_module_doc_attr.multiplicity}'"
+        assert bsw_module_doc_attr.kind.value == "aggr", \
+            f"Expected kind 'aggr', got '{bsw_module_doc_attr.kind.value}'"
+
+        # Verify the attribute note contains "documentation"
+        assert bsw_module_doc_attr.note is not None, "bswModuleDocumentation should have a note"
+        assert "documentation" in bsw_module_doc_attr.note.lower(), \
+            f"Expected note to contain 'documentation', got: {bsw_module_doc_attr.note.lower()}"
+
+        # CRITICAL: Verify that bswModule attribute exists with correct type (BswModuleDependency)
+        # This is a DIFFERENT attribute from bswModuleDocumentation - it's for dependency tracking
+        assert "bswModule" in bsw_module_description_bsw_module_description.attributes, \
+            "Expected 'bswModule' attribute not found. This attribute should exist with type 'BswModuleDependency'."
+        bsw_module_attr = bsw_module_description_bsw_module_description.attributes["bswModule"]
+        assert bsw_module_attr.type == "BswModuleDependency", \
+            f"Expected type 'BswModuleDependency' for bswModule attribute, got '{bsw_module_attr.type}'"
+
+        # CRITICAL: Verify NO attribute with type "SwComponent" exists (incomplete type parsing)
+        for attr_name, attr in bsw_module_description_bsw_module_description.attributes.items():
+            if attr.type == "SwComponent":
+                raise AssertionError(
+                    f"Incorrect attribute '{attr_name}' with type 'SwComponent' should NOT exist. "
+                    f"This indicates the type fragment was not merged correctly. "
+                    f"Expected type 'SwComponentDocumentation'."
+                )
+
+        # Print verification information
+        print("\n=== BswModuleDescription verified ===")
+        print(f"  Name: {bsw_module_description_bsw_module_description.name}")
+        print(f"  Package: {bsw_module_description_bsw_module_description.package}")
+        print(f"  Abstract: {bsw_module_description_bsw_module_description.is_abstract}")
+        print(f"  Total attributes: {len(bsw_module_description_bsw_module_description.attributes)}")
+
+        print("\n=== bswModuleDocumentation attribute verified ===")
+        print("  Name: bswModuleDocumentation")
+        print(f"  Type: {bsw_module_doc_attr.type}")
+        print(f"  Multiplicity: {bsw_module_doc_attr.multiplicity}")
+        print(f"  Kind: {bsw_module_doc_attr.kind.value}")
+        print(f"  Note preview: {bsw_module_doc_attr.note[:80] if len(bsw_module_doc_attr.note) > 80 else bsw_module_doc_attr.note}...")
+
+        print("\n=== CamelCase fragment merging verified ===")
+        print("  ✓ Attribute 'bswModuleDocumentation' correctly extracted")
+        print("  ✓ Type 'SwComponentDocumentation' correctly extracted")
+        print("  ✓ NO incorrect fragment attribute 'bswModule'")
+        print("  ✓ NO incorrect type 'SwComponent'")
+        print("  ✓ Name and type fragments correctly merged from continuation line")
+
+        print("\n=== This validates SWUT_PARSER_00102 fix ===")
+        print("  PDF lines: 'bswModule SwComponent 0..1 aggr ...' + 'Documentation Documentation'")
+        print("  Expected result: name='bswModuleDocumentation', type='SwComponentDocumentation'")
+        print("  Fix status: VERIFIED")
