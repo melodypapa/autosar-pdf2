@@ -12,16 +12,24 @@ Redesign of AUTOSAR PDF extraction tool using Java, featuring improved table ext
 
 ### High-Level Data Flow
 
+**For autosar-extract CLI (structured data extraction):**
+
 ```
 AUTOSAR PDFs → PDF Extraction Layer → Domain Model → Output Layer → Markdown/JSON
                         ↓                        ↓
                     Tabula (tables)         Java Records/Classes
 ```
 
+**For autosar-pdf2md CLI (direct PDF to Markdown):**
+
+```
+PDF → Tabula (tables) + PDFBox (text) → MarkdownConverter → Single Markdown File
+```
+
 ### Layer Separation
 
 1. **Extraction Layer** - PDFBox + Tabula for raw text and table extraction from PDFs
-2. **Domain Layer** - Rich domain models representing AUTOSAR concepts (classes, enums, packages, attributes)
+2. **Domain Layer** - Rich domain models representing AUTOSAR concepts (classes, enums, packages, attributes) - used by autosar-extract CLI only
 3. **Output Layer** - Converters to Markdown and JSON formats
 
 ### Key Design Decisions
@@ -31,6 +39,7 @@ AUTOSAR PDFs → PDF Extraction Layer → Domain Model → Output Layer → Mark
 - **Builder pattern** for complex object construction
 - **Strategy pattern** for different parser types (class, enum, primitive)
 - **Visitor pattern** for output generation
+- **Separate CLI tools** - `autosar-extract` for structured extraction, `autosar-pdf2md` for direct format conversion
 
 ## Domain Model
 
@@ -269,13 +278,49 @@ OutputWriter (interface)
     ├── writeClassDetails(AutosarClass): JsonObject
     ├── writeMapping(Map<String, String>): JsonArray
     └── writeInheritanceHierarchy(List<AutosarClass>): JsonArray
+
+MarkdownConverter (for autosar-pdf2md CLI)
+├── convertPdfToMarkdown(Path, ConversionOptions): String
+├── extractTables(Path): List<MarkdownTable>
+├── extractText(Path): List<MarkdownText>
+└── combineContent(List<MarkdownTable>, List<MarkdownText>): String
+```
+
+**MarkdownTable (record):**
+```
+├── headers: List<String>
+├── rows: List<List<String>>
+├── pageNumber: int
+└── cellAlignment: Optional<List<Alignment>>
+```
+
+**MarkdownText (record):**
+```
+├── content: String
+├── pageNumber: int
+├── position: TextPosition
+└── type: TextType (HEADING, PARAGRAPH, LIST_ITEM)
+```
+
+**ConversionOptions (record):**
+```
+├── preserveTitles: boolean
+├── tableOnly: boolean
+├── insertPageBreaks: boolean
+└── verbose: boolean
 ```
 
 ### Output Formats
 
+**autosar-extract CLI:**
 - Type-to-package mapping (Markdown or JSON)
 - Class inheritance hierarchy (Markdown or JSON)
 - Individual class details (Markdown or JSON, one file per class)
+
+**autosar-pdf2md CLI:**
+- Direct PDF to Markdown conversion (one PDF → one Markdown file)
+- Tables converted to Markdown tables using Tabula
+- All PDF content preserved in Markdown format
 
 ### JSON Output Schema
 
@@ -419,6 +464,80 @@ autosar-extract input.pdf --mapping output.md -v --log-file extraction.log
 - **No output flags specified:** Display help message, exit with error code
 - **Invalid input paths:** Display error with invalid path, exit with error code
 - **Mutually exclusive flags:** Display error message, exit with error code
+
+### autosar-pdf2md CLI
+
+**Purpose:** Direct PDF to Markdown conversion - converts entire PDF content to a single Markdown file with tables preserved as Markdown tables.
+
+**Command Structure:**
+
+```
+autosar-pdf2md <input-pdf> <output-md> [options]
+
+Required:
+  <input-pdf>             Path to input PDF file
+  <output-md>             Path to output Markdown file
+
+Optional:
+  --preserve-titles       Preserve PDF section headers as Markdown headings
+  --table-only            Extract only tables, skip text content
+  -v, --verbose           Enable verbose output
+  --log-file <file>       Write logs to file
+```
+
+**Conversion Strategy:**
+
+```
+PDF → Tabula (LATTICE mode) + PDFBox (text) → Markdown Generator → Single .md file
+```
+
+**Extraction Process:**
+
+1. **Page-by-page processing:**
+   - Use Tabula LATTICE mode to extract tables
+   - Use PDFBox to extract non-table text with position data
+
+2. **Table detection:**
+   - If Tabula detects tables on a page, convert to Markdown tables
+   - If no tables detected, extract text with PDFBox
+
+3. **Markdown generation:**
+   - Tables: Convert to Markdown format with proper column alignment
+   - Text: Convert paragraphs with appropriate spacing
+   - Section headers: Detect and convert to Markdown headings (H1-H6)
+   - Page breaks: Insert horizontal rule `---` between pages
+
+4. **Multi-line cell handling:**
+   - Replace newlines within cells with spaces
+   - Preserve cell content structure
+
+**Example Usage:**
+
+```bash
+# Simple PDF to Markdown conversion
+autosar-pdf2md input.pdf output.md
+
+# With section headers preserved
+autosar-pdf2md input.pdf output.md --preserve-titles
+
+# Extract only tables
+autosar-pdf2md input.pdf tables.md --table-only
+
+# Verbose mode with logging
+autosar-pdf2md input.pdf output.md -v --log-file conversion.log
+```
+
+**Validation:**
+
+- Input PDF must exist
+- Output file path must be writable
+- Parent directories created automatically if missing
+
+**Error Handling (autosar-pdf2md CLI):**
+
+- **Corrupt PDF files:** Throw `PdfExtractionException` with details
+- **No tables detected:** Log warning, continue with text extraction
+- **File write failures:** Throw `IOException` with path details
 
 ## Build and Dependencies
 
