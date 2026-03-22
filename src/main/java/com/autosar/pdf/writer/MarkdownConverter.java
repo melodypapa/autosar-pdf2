@@ -3,12 +3,10 @@ package com.autosar.pdf.writer;
 import com.autosar.pdf.writer.models.ConversionOptions;
 import com.autosar.pdf.writer.models.MarkdownTable;
 import com.autosar.pdf.writer.models.MarkdownText;
-import com.autosar.pdf.writer.models.TextType;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.Loader;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;

@@ -8,4 +8,5 @@ public record ConversionOptions(
     boolean tableOnly,
     boolean insertPageBreaks,
     boolean verbose
-) {}
+) {
+}

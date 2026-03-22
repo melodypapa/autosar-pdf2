@@ -7,4 +7,5 @@ public record DocumentSource(
     int page,
     Optional<String> standard,
     Optional<String> release
-) {}
+) {
+}

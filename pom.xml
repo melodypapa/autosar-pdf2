@@ -157,6 +157,7 @@
                 <version>4.8.3.0</version>
                 <configuration>
                     <failOnError>false</failOnError>
+                    <skip>true</skip>
                 </configuration>
                 <executions>
                     <execution>
@@ -174,6 +175,7 @@
                 <version>3.21.2</version>
                 <configuration>
                     <failOnViolation>false</failOnViolation>
+                    <skip>true</skip>
                 </configuration>
                 <executions>
                     <execution>

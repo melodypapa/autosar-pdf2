@@ -10,4 +10,5 @@ public record MarkdownText(
     int pageNumber,
     Optional<String> position,
     TextType type
-) {}
+) {
+}

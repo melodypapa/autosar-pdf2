@@ -8,4 +8,5 @@ public record AutosarPackage(
     List<String> path,
     Map<String, AutosarType> types,
     DocumentSource source
-) {}
+) {
+}

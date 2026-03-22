@@ -11,7 +11,11 @@ import com.autosar.pdf.cli.Pdf2MarkdownCommand;
  * - autosar-extract: Extract structured AUTOSAR data from PDFs
  * - pdf2md: Convert PDF documents directly to Markdown format
  */
-public class Main {
+public final class Main {
+
+    private Main() {
+        // Utility class - prevent instantiation
+    }
 
     /**
      * Executes the application with the given arguments.
@@ -41,7 +45,9 @@ public class Main {
      * @return Array without the first argument
      */
     private static String[] shiftArgs(String[] args) {
-        if (args.length <= 1) return new String[0];
+        if (args.length <= 1) {
+            return new String[0];
+        }
         String[] shifted = new String[args.length - 1];
         System.arraycopy(args, 1, shifted, 0, args.length - 1);
         return shifted;

@@ -7,4 +7,5 @@ public record Attribute(
     String type,
     Optional<String> defaultValue,
     Optional<String> multiplicity
-) {}
+) {
+}

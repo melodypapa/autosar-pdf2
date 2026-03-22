@@ -57,7 +57,8 @@ public class AutosarExtractCommand implements Callable<Integer> {
         }
 
         if (mappingFile == null && hierarchyFile == null && classDetailsDir == null) {
-            System.err.println("Error: At least one output option (--mapping, --hierarchy, or --class-details) must be specified");
+            System.err.println(
+                "Error: At least one output option (--mapping, --hierarchy, or --class-details) must be specified");
             return 1;
         }
 

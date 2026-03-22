@@ -6,4 +6,5 @@ public record EnumerationLiteral(
     String name,
     Optional<String> value,
     Optional<String> description
-) {}
+) {
+}

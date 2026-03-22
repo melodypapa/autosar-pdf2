@@ -1,6 +1,9 @@
 package com.autosar.pdf.domain;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Builder for constructing AutosarPackage instances with mutable state during parsing.

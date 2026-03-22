@@ -12,4 +12,5 @@ public record AutosarClass(
     Optional<AutosarClass> parent,
     Optional<String> aggregatedBy,
     List<String> subclasses
-) implements AutosarType {}
+) implements AutosarType {
+}

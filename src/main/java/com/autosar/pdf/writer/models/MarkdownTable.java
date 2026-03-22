@@ -11,4 +11,5 @@ public record MarkdownTable(
     List<List<String>> rows,
     int pageNumber,
     Optional<List<Alignment>> cellAlignment
-) {}
+) {
+}

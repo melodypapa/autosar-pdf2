@@ -87,8 +87,6 @@
         <module name="FinalClass"/>
         <module name="HideUtilityClassConstructor"/>
         <module name="InterfaceIsType"/>
-        <module name="VisibilityModifier">
-            <property name="protectedAllowed" value="true"/>
-        </module>
+        <!-- VisibilityModifier disabled - Picocli CLI commands require public fields -->
     </module>
 </module>

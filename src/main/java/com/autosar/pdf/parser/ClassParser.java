@@ -2,7 +2,6 @@ package com.autosar.pdf.parser;
 
 import com.autosar.pdf.domain.AutosarClassBuilder;
 
-import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 

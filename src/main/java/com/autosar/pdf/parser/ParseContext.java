@@ -1,6 +1,9 @@
 package com.autosar.pdf.parser;
 
-import com.autosar.pdf.domain.*;
+import com.autosar.pdf.domain.AutosarClassBuilder;
+import com.autosar.pdf.domain.AutosarPackage;
+import com.autosar.pdf.domain.AutosarPackageBuilder;
+import com.autosar.pdf.domain.DocumentSource;
 
 import java.util.List;
 import java.util.Optional;
@@ -17,4 +20,5 @@ public record ParseContext(
     int currentPage,
     DocumentSource source,
     List<AutosarPackage> packages
-) {}
+) {
+}

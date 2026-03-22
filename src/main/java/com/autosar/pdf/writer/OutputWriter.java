@@ -1,7 +1,6 @@
 package com.autosar.pdf.writer;
 
 import com.autosar.pdf.domain.AutosarClass;
-import com.fasterxml.jackson.databind.JsonNode;
 
 import java.nio.file.Path;
 import java.util.List;

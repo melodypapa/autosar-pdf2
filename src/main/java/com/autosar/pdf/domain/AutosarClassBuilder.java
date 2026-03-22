@@ -1,6 +1,7 @@
 package com.autosar.pdf.domain;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -22,8 +23,8 @@ public class AutosarClassBuilder {
         this.atpType = atpType;
     }
 
-    public AutosarClassBuilder isAbstract(boolean isAbstract) {
-        this.isAbstract = isAbstract;
+    public AutosarClassBuilder isAbstract(boolean abstractFlag) {
+        this.isAbstract = abstractFlag;
         return this;
     }
 
@@ -37,13 +38,13 @@ public class AutosarClassBuilder {
         return this;
     }
 
-    public AutosarClassBuilder parent(AutosarClass parent) {
-        this.parent = parent;
+    public AutosarClassBuilder parent(AutosarClass parentClass) {
+        this.parent = parentClass;
         return this;
     }
 
-    public AutosarClassBuilder aggregatedBy(String aggregatedBy) {
-        this.aggregatedBy = aggregatedBy;
+    public AutosarClassBuilder aggregatedBy(String aggregatedByValue) {
+        this.aggregatedBy = aggregatedByValue;
         return this;
     }
 

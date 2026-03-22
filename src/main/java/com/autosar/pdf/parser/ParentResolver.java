@@ -4,7 +4,12 @@ import com.autosar.pdf.domain.AutosarClass;
 import com.autosar.pdf.domain.AutosarPackage;
 import com.autosar.pdf.domain.AutosarType;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 /**
  * Resolves parent-child relationships between AUTOSAR classes.
