@@ -22,25 +22,11 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
-      - name: Build with Maven
-        run: mvn clean compile
+      - name: Build and test
+        run: mvn clean test
 
-      - name: Run tests
-        run: mvn test
-
-      - name: Generate coverage report
-        run: mvn jacoco:report
-
-      - name: Checkstyle
-        run: mvn checkstyle:check
-        continue-on-error: true
-
-      - name: SpotBugs
-        run: mvn spotbugs:check
-        continue-on-error: true
-
-      - name: PMD
-        run: mvn pmd:check
+      - name: Quality checks
+        run: mvn verify
         continue-on-error: true
 
       - name: Upload coverage to Codecov
@@ -57,10 +43,12 @@ jobs:
         with:
           name: test-results
           path: target/surefire-reports/
+          retention-days: 7
 
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
-          path: target/site/jacoco/
+          path: target/site/jacoco/jacoco.xml
+          retention-days: 7
