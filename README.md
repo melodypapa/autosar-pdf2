@@ -1,5 +1,8 @@
 # AUTOSAR PDF to Markdown/JSON
 
+[![Quality Check](https://github.com/melodypapa/autosar-pdf2/actions/workflows/quality-check.yml/badge.svg)](https://github.com/melodypapa/autosar-pdf2/actions/workflows/quality-check.yml)
+[![codecov](https://codecov.io/gh/melodypapa/autosar-pdf2/branch/main/graph/badge.svg)](https://codecov.io/gh/melodypapa/autosar-pdf2)
+
 Java implementation for extracting AUTOSAR models from PDF specification documents. This tool converts AUTOSAR specification PDFs into structured data (Markdown or JSON format) with support for table extraction, multi-page handling, and two CLI interfaces.
 
 ## Features
